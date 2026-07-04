@@ -1,6 +1,6 @@
 {
-  "geode": "5.6.1",
-  "version": "v0.8.10",
+  "geode": "5.7.1",
+  "version": "v0.8.11",
   "id": "smjs.gdintercept",
   "name": "GDIntercept",
   "developers": [
@@ -145,12 +145,6 @@
       "description": "If this is enabled, GDI will remember the pause option between session.",
       "type": "bool",
       "default": false
-    },
-    "mask-telemetry": {
-      "name": "Mask Telemetry Data",
-      "description": "Masks telemetry data being sent to the GD servers like OS info & local user info.",
-      "type": "bool",
-      "default": true
     },
     "cache-limit": {
       "name": "Cache Limit",

@@ -31,10 +31,9 @@ bool ViewCell::init(const SideBarView& view) {
 
     const CCSize iconSize = m_icon->getScaledContentSize();
     const float height = iconSize.height + theme.menu.font.lineHeight;
-    const Theme::Color iconColor = view.iconColor(theme.menu.icons);
     m_name = CenterLabel::create(view.name, theme.menu.font.fontName);
 
-    iconColor.applyTo(m_icon);
+    view.iconColor(theme.menu.icons).applyTo(m_icon);
     m_icon->setAnchorPoint(CENTER_LEFT);
     m_icon->setPositionY(height / 2);
     theme.menu.text.applyTo(m_name);

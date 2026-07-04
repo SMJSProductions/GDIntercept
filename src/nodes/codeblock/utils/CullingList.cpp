@@ -1,7 +1,7 @@
 #include "CullingList.hpp"
 
-CullingList* CullingList::create(const CCSize& size, const std::vector<CullingCell*>& cells) {
-    CullingList* instance = new CullingList(cells);
+CullingList* CullingList::create(const CCSize& size, std::vector<CullingCell*> cells) {
+    CullingList* instance = new CullingList(std::move(cells));
 
     if (instance && instance->init(size)) {
         instance->autorelease();
@@ -13,16 +13,16 @@ CullingList* CullingList::create(const CCSize& size, const std::vector<CullingCe
     }
 }
 
-CullingList::CullingList(const std::vector<CullingCell*>& cells) : m_cells(cells),
+CullingList::CullingList(std::vector<CullingCell*> cells) : m_cells(std::move(cells)),
 m_cellHeight(cells.empty() ? 0 : cells.at(0)->m_height),
 m_view(nullptr),
 m_disableCulling(false) { }
 
 CullingList::~CullingList() {
     for (CullingCell* cell : m_cells) {
+        cell->autorelease();
         cell->removeFromParent();
-
-        delete cell;
+        cell->release();
     }
 }
 
@@ -78,14 +78,14 @@ void CullingList::toggleCulling(const bool enabled) {
     m_disableCulling = !enabled;
 }
 
-void CullingList::setCells(const std::vector<CullingCell*>& cells) {
+void CullingList::setCells(std::vector<CullingCell*> cells) {
     for (CullingCell* cell : m_cells) {
+        cell->autorelease();
         cell->removeFromParent();
-
-        delete cell;
+        cell->release();
     }
 
-    m_cells = cells;
+    m_cells = std::move(cells);
 
     m_activeCells.clear();
     this->reloadData();

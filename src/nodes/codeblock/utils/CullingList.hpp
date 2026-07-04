@@ -6,14 +6,14 @@
 
 class CullingList : public HoverNode<CCLayerColor>, public TableViewDelegate, public TableViewDataSource {
 public:
-    static CullingList* create(const CCSize& size, const std::vector<CullingCell*>& cells = {});
+    static CullingList* create(const CCSize& size, std::vector<CullingCell*> cells = {});
 
     ~CullingList();
     void reloadData();
     void moveToTop();
     void moveToBottom();
     void toggleCulling(const bool enabled);
-    void setCells(const std::vector<CullingCell*>& cells);
+    void setCells(std::vector<CullingCell*> cells);
     void setContentWidth(const float width);
     void setContentHeight(const float height);
     void setContentSize(const CCSize& size) override;
@@ -29,7 +29,7 @@ protected:
     bool m_xAxisLocked;
     bool m_disableCulling;
 
-    CullingList(const std::vector<CullingCell*>& cells);
+    CullingList(std::vector<CullingCell*> cells);
     bool init(const CCSize& size);
     bool shouldDisableVertical();
     void horizontalRender(CullingCell* cell);

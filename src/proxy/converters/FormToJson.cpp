@@ -4,28 +4,6 @@ using namespace nlohmann;
 
 proxy::converters::FormToJson::FormToJson() : Converter(enums::ContentType::JSON, true) { };
 
-bool proxy::converters::FormToJson::shouldMask(const std::string_view path, const std::string_view key) const {
-    static const std::vector<std::string> MASKED_STRINGS {
-        "dvs",
-        "vkey",
-        "gdw"
-    };
-
-    if (key == "udid" || key == "uuid") {
-        static const std::vector<std::string> USER_RELIANT_ENDPOINTS {
-            "/database/getGJScores20.php",
-            "/database/getGJChallenges.php",
-            "/database/getGJRewards.php",
-            "/database/getGJSecretReward.php"
-        };
-
-        // Don't mask user info if the user is not logged in & omit endpoints with weird user behavior
-        return GJAccountManager::get()->m_accountID != 0 && std::find(USER_RELIANT_ENDPOINTS.begin(), USER_RELIANT_ENDPOINTS.end(), path) == USER_RELIANT_ENDPOINTS.end();
-    } else {
-        return std::find(MASKED_STRINGS.begin(), MASKED_STRINGS.end(), key) != MASKED_STRINGS.end();
-    }
-}
-
 bool proxy::converters::FormToJson::canConvert(const std::string_view path, const bool isBody, const std::string_view original) const {
     bool hasAssignment = false;
 
@@ -65,16 +43,13 @@ std::string proxy::converters::FormToJson::convert(const std::string_view path, 
 
 std::string proxy::converters::FormToJson::toRaw(const std::string_view path, const std::string_view original) const {
     const ordered_json object = ordered_json::parse(original);
-    const bool shouldMask = Mod::get()->getSettingValue<bool>("mask-telemetry");
     std::string result;
 
     for (const auto& [key, value] : object.items()) {
-        if (!shouldMask || !this->shouldMask(path, key)) {
-            result.append(key);
-            result.push_back('=');
-            result.append(converters::safeDump(value, 0, true));
-            result.push_back('&');
-        }
+        result.append(key);
+        result.push_back('=');
+        result.append(converters::safeDump(value, 0, true));
+        result.push_back('&');
     }
 
     result.pop_back();

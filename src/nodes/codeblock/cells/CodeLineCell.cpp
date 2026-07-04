@@ -27,6 +27,8 @@ CodeLineCell::CodeLineCell(
 m_code(code),
 m_lineNumber(lineNumber),
 m_lineNumberWidth(lineNumberWidth) {
+    if (code.type == ContentType::BINARY) return;
+
     for (size_t index = m_code.contents.find('\t'); index != std::string::npos; index = m_code.contents.find('\t')) {
         m_code.contents.replace(index, 1, "  ");
     }
