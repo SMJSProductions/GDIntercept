@@ -4,7 +4,6 @@
 
 - Increase overal performance
 - Increase performance when loading binary views
-- 
 - Delete masking due to too many compat issues
 
 ## v0.8.10 Fix the wraith
