@@ -2,71 +2,6 @@
 
 LookupTable<std::string, Theme::Theme> Theme::Theme::CACHED_THEMES;
 
-Theme::Color::operator float() const {
-    return a;
-}
-
-Theme::Color::operator ccColor3B() const {
-    return { r, g, b };
-}
-
-Theme::Color::operator ccColor4B() const {
-    return { r, g, b, a };
-}
-
-Theme::Color::Color(const GLubyte a) : r(0), g(0), b(0), a(a) { }
-
-Theme::Color::Color(const std::string_view hex) : r(0), g(0), b(0), a(255) {
-    this->extractChannels(hex);
-}
-
-Theme::Color::Color(const GLubyte r, const GLubyte g, const GLubyte b, const GLubyte a) : r(r), g(g), b(b), a(a) { }
-
-bool Theme::Color::isInvisible() const {
-    return a == 0;
-}
-
-bool Theme::Color::isTransparent() const {
-    return a > 0 && a < 255;
-}
-
-bool Theme::Color::isOpaque() const {
-    return a == 255;
-}
-
-void Theme::Color::extractChannels(const std::string_view hex) {
-    ESCAPE_WHEN(hex.size() < 2,);
-
-    const std::string_view hexStr = hex.substr(1);
-    const size_t size = hexStr.size();
-
-    ESCAPE_WHEN(!hex.starts_with("#") || hexStr.find_first_not_of("0123456789ABCDEFabcdef") != std::string_view::npos || (size > 4 && size != 6 && size != 8),);
-
-    if (size < 3) {
-        r = g = b = extractChannel(hexStr, 0, size == 1);
-        a = 255;
-    } else {
-        const bool isShort = size < 6;
-
-        r = extractChannel(hexStr, 0, isShort);
-        g = extractChannel(hexStr, 1, isShort);
-        b = extractChannel(hexStr, 2, isShort);
-
-        if (size % 4 == 0) {
-            a = extractChannel(hexStr, 3, isShort);
-        } else {
-            a = 255;
-        }
-    }
-}
-
-GLubyte Theme::Color::extractChannel(const std::string_view hexString, const size_t index, const bool isShort) const {
-    const size_t channelSize = 1 + !isShort;
-    const GLubyte byte = utils::numFromString<GLubyte>(hexString.substr(channelSize * index, channelSize), 16).unwrapOr(0);
-
-    return isShort ? (byte << 4) | byte : byte;
-}
-
 CCLabelBMFont* Theme::Font::createLabel(const std::string_view text) const {
     CCLabelBMFont* label = CCLabelBMFont::create(StringBuffer(text).c_str(), fontName.c_str());
 
@@ -125,21 +60,21 @@ Theme::Theme Theme::Theme::createTheme(const json& obj) {
     const json scrollbar = code.at("scrollbar");
     const json syntax = code.at("syntax");
     const json menuFont = menu.at("font");
-    const Color thumb = scrollbar.at("thumb");
-    const Color syntaxText = syntax.at("text");
-    const Color syntaxKey = syntax.at("key");
-    const Color syntaxString = syntax.at("string");
-    const Color menuBackground = menu.at("background");
-    const Color menuText = menu.at("text");
-    const Color menuBorder = menu.at("border");
+    const Color thumb = Color::parse(scrollbar.at("thumb")).unwrapOrDefault();
+    const Color syntaxText = Color::parse(syntax.at("text")).unwrapOrDefault();
+    const Color syntaxKey = Color::parse(syntax.at("key")).unwrapOrDefault();
+    const Color syntaxString = Color::parse(syntax.at("string")).unwrapOrDefault();
+    const Color menuBackground = Color::parse(menu.at("background")).unwrapOrDefault();
+    const Color menuText = Color::parse(menu.at("text")).unwrapOrDefault();
+    const Color menuBorder = Color::parse(menu.at("border")).unwrapOrDefault();
     const Color disabledText = Theme::colorOrDefault(menu, "disabled-text", menuText, 0x55);
     const Color categoryText = Theme::colorOrDefault(menu, "category-text", menuText, 0xAA);
     const Menu::Icons defaultIcons = Menu::Icons({
-        .info = Color("#FF6961"),
-        .body = Color("#FFEE8C"),
-        .query = Color("#A2BFFE"),
-        .header = Color("#B19CD9"),
-        .response = Color("#B2FBA5"),
+        .info = Color::parse("#FF6961").unwrapOrDefault(),
+        .body = Color::parse("#FFEE8C").unwrapOrDefault(),
+        .query = Color::parse("#A2BFFE").unwrapOrDefault(),
+        .header = Color::parse("#B19CD9").unwrapOrDefault(),
+        .response = Color::parse("#B2FBA5").unwrapOrDefault(),
         .actionIcon = menuText,
         .disabledIcon = disabledText,
         .categoryIcon = categoryText
@@ -150,8 +85,8 @@ Theme::Theme Theme::Theme::createTheme(const json& obj) {
             .paddingLeft = Theme::objectOrDefault<float>(code, "padding-left", [](const json& obj) { return obj.get<float>(); }, 3),
             .paddingRight = Theme::objectOrDefault<float>(code, "padding-right", [](const json& obj) { return obj.get<float>(); }, 3),
             .paddingCenter = Theme::objectOrDefault<float>(code, "padding-center", [](const json& obj) { return obj.get<float>(); }, 3),
-            .background = code.at("background"),
-            .foreground = code.at("foreground"),
+            .background = Color::parse(code.at("background")).unwrapOrDefault(),
+            .foreground = Color::parse(code.at("foreground")).unwrapOrDefault(),
             .font = {
                 .fontName = codeFont.at("family").get<std::string>(),
                 .fontScale = codeFont.at("scale").get<float>(),
@@ -159,17 +94,17 @@ Theme::Theme Theme::Theme::createTheme(const json& obj) {
             },
             .scrollbar = {
                 .size = Theme::objectOrDefault<float>(scrollbar, "size", [](const json& obj) { return obj.get<float>(); }, 4),
-                .border = scrollbar.at("border"),
+                .border = Color::parse(scrollbar.at("border")).unwrapOrDefault(),
                 .thumb = thumb,
-                .activeThumb = Theme::colorOrDefault(scrollbar, "active-thumb", thumb, std::min<GLubyte>(thumb * 2, 255))
+                .activeThumb = Theme::colorOrDefault(scrollbar, "active-thumb", thumb, std::min<GLubyte>(thumb.a * 2, 255))
             },
             .syntax = {
                 .text = syntaxText,
                 .key = syntaxKey,
                 .string = syntaxString,
-                .number = syntax.at("number"),
-                .constant = syntax.at("constant"),
-                .error = syntax.at("error"),
+                .number = Color::parse(syntax.at("number")).unwrapOrDefault(),
+                .constant = Color::parse(syntax.at("constant")).unwrapOrDefault(),
+                .error = Color::parse(syntax.at("error")).unwrapOrDefault(),
                 .separator = Theme::colorOrDefault(syntax, "separator", syntaxText),
                 .terminator = Theme::colorOrDefault(syntax, "terminator", syntaxText),
                 .bracket = Theme::colorOrDefault(syntax, "bracket", syntaxText),
@@ -181,9 +116,9 @@ Theme::Theme Theme::Theme::createTheme(const json& obj) {
             .paddingLeft = Theme::objectOrDefault<float>(menu, "padding-left", [](const json& obj) { return obj.get<float>(); }, 3),
             .paddingRight = Theme::objectOrDefault<float>(menu, "padding-right", [](const json& obj) { return obj.get<float>(); }, 3),
             .paddingCenter = Theme::objectOrDefault<float>(menu, "padding-center", [](const json& obj) { return obj.get<float>(); }, 3),
-            .background = menu.at("background"),
+            .background = Color::parse(menu.at("background")).unwrapOrDefault(),
             .categoryBackground = Theme::colorOrDefault(menu, "category-background", menuBackground),
-            .foreground = menu.at("foreground"),
+            .foreground = Color::parse(menu.at("foreground")).unwrapOrDefault(),
             .text = menuText,
             .disabledText = disabledText,
             .categoryText = categoryText,
@@ -210,18 +145,18 @@ Theme::Theme Theme::Theme::createTheme(const json& obj) {
     };
 }
 
-Theme::Color Theme::Theme::colorOrDefault(const json& obj, const std::string_view key, const Color &override, const std::optional<GLubyte>& alpha) {
+Color Theme::Theme::colorOrDefault(const json& obj, const std::string_view key, const Color &override, const std::optional<GLubyte>& alpha) {
     if (obj.contains(key)) {
-        return obj.at(key);
-    } else {
-        Color colorCopy = Color(override);
-
-        if (alpha.has_value()) {
-            colorCopy.a = alpha.value();
-        }
-
-        return colorCopy;
+        if (Result<Color> color = Color::parse(obj.at(key)); color.ok()) return color.unwrap();
     }
+
+    Color colorCopy = Color(override);
+
+    if (alpha.has_value()) {
+        colorCopy.a = alpha.value();
+    }
+
+    return colorCopy;
 }
 
 const Theme::Theme& Theme::getTheme() {
@@ -232,29 +167,5 @@ const Theme::Theme& Theme::getTheme() {
     } else {
         // Dark is a default theme and will always exist unless someone messes with the default themes, in which case I can't guarantee anything
         return Theme::CACHED_THEMES.at("Dark");
-    }
-}
-
-void Theme::from_json(const json& json, Color& color) {
-    if (json.is_array()) {
-        json.at(0).get_to(color.r);
-        json.at(1).get_to(color.g);
-        json.at(2).get_to(color.b);
-
-        if (json.size() > 3) {
-            json.at(3).get_to(color.a);
-        }
-    } else if (json.is_object()) {
-        json.at("r").get_to(color.r);
-        json.at("g").get_to(color.g);
-        json.at("b").get_to(color.b);
-
-        if (json.contains("a")) {
-            json.at("a").get_to(color.a);
-        }
-    } else if (json.is_string()) {
-        color.extractChannels(json.get<std::string>());
-    } else {
-        log::warn("Failed to parse color: {}", json.dump(2, ' ', true, json::error_handler_t::replace));
     }
 }

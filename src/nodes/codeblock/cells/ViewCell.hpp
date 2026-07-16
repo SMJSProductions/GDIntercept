@@ -12,7 +12,7 @@ class ViewCell;
 namespace SideBarCell {
     struct SideBarView {
         const char icon;
-        const std::function<Theme::Color(const Theme::Menu::Icons& icons)> iconColor;
+        const std::function<Color(const Theme::Menu::Icons& icons)> iconColor;
         const std::string name;
         const std::function<void(CodeBlock* block)> callback;
 

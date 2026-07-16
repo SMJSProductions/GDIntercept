@@ -1,11 +1,11 @@
 #pragma once
 
+#include <json.hpp>
+#include <Stream.hpp>
+#include <LookupTable.hpp>
 #include <fmt/chrono.h>
 #include <Geode/Geode.hpp>
 #include <Geode/utils/web.hpp>
-#include "../lib/json.hpp"
-#include "../lib/Stream.hpp"
-#include "../lib/LookupTable.hpp"
 #include "concepts.hpp"
 #include "macro_utils.hpp"
 #include "objects/Theme.hpp"

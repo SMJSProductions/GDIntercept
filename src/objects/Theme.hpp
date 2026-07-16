@@ -1,9 +1,11 @@
 #pragma once
 
+#include <json.hpp>
+#include <LookupTable.hpp>
 #include <Geode/Geode.hpp>
+#include <Geode/Geode.hpp>
+#include <Geode/utils/ColorCode.hpp>
 #include "../macro_utils.hpp"
-#include "../../lib/json.hpp"
-#include "../../lib/LookupTable.hpp"
 #include "../settings/DynamicTheme.hpp"
 
 using namespace nlohmann;
@@ -16,36 +18,6 @@ concept ColorNode = requires(T color) {
 };
 
 namespace Theme {
-    struct Color {
-        operator float() const;
-        operator ccColor3B() const;
-        operator ccColor4B() const;
-
-        GLubyte r;
-        GLubyte g;
-        GLubyte b;
-        GLubyte a;
-
-        Color(const GLubyte a = 0);
-        Color(const std::string_view hex);
-        Color(const GLubyte r, const GLubyte g, const GLubyte b, const GLubyte a = 255);
-
-        bool isInvisible() const;
-        bool isTransparent() const;
-        bool isOpaque() const;
-        template<ColorNode T>
-        void applyTo(T* node) const {
-            node->setColor(*this);
-            node->setOpacity(*this);
-        }
-    private:
-        // Supporting the format #R/G/B, #RR/GG/BB, #RGB, #RGBA, #RRGGBB and #RRGGBBAA
-        void extractChannels(const std::string_view hex);
-        GLubyte extractChannel(const std::string_view hexString, const size_t index, const bool isShort) const;
-
-        friend void from_json(const json& json, Color& color);
-    };
-
     struct Font {
         std::string fontName;
         float fontScale;
@@ -135,5 +107,4 @@ namespace Theme {
     };
 
     const Theme& getTheme();
-    void from_json(const json& json, Color& color);
 };
