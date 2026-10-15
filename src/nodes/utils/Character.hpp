@@ -5,7 +5,7 @@
 
 class Character : public CenterLabel {
 public:
-    static Character* create(const char character, const std::string_view font, const bool rescale = false);
+    static Character* create(const char character, const ZStringView font, const bool rescale = false);
 
     void setCString(const char* label) override;
 protected:

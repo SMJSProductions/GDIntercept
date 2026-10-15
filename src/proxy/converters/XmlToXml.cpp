@@ -2,7 +2,7 @@
 
 proxy::converters::XmlToXml::XmlToXml() : Converter(enums::ContentType::XML) { }
 
-bool proxy::converters::XmlToXml::canConvert(const std::string_view path, const bool isBody, const std::string_view original) const {
+bool proxy::converters::XmlToXml::canConvert(const std::string_view path, const bool isRequest, const std::string_view original) const {
     return original.starts_with("<?xml") ||
         original.starts_with("<!DOCTYPE") ||
         original.starts_with("<html");

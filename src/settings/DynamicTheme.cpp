@@ -131,7 +131,7 @@ bool DynamicThemeNode::init(const std::shared_ptr<DynamicTheme>& setting, const 
 void DynamicThemeNode::updateState(CCNode* invoker) {
     SettingValueNodeV3::updateState(invoker);
     const bool enabled = this->getSetting()->shouldEnable();
-    
+
     if (invoker != m_label) {
         m_label->setCString(this->getValue().value.c_str());
     }
@@ -161,7 +161,7 @@ void DynamicThemeNode::onRefresh(CCObject* sender) {
 
     m_label->setCString(this->getValue().value.c_str());
 
-    DynamicTheme::reloadDynamicThemes(fmt::format("{}/{}", setting ->getModID(), setting->getKey()));
+    DynamicTheme::reloadDynamicThemes(fmt::format("{}/{}", setting->getModID(), setting->getKey()));
 }
 
 void DynamicThemeNode::onFiles(CCObject* sender) {

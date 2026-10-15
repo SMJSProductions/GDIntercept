@@ -2,8 +2,16 @@
 
 proxy::converters::RawToBinary::RawToBinary() : Converter(enums::ContentType::BINARY) { };
 
-bool proxy::converters::RawToBinary::canConvert(const std::string_view path, const bool isBody, const std::string_view original) const {
-    return original.find_first_of('\0') != std::string_view::npos;
+bool proxy::converters::RawToBinary::canConvert(const std::string_view path, const bool isRequest, const std::string_view original) const {
+    // Anything beyond 5Mb risks being too much to handle
+    if (original.size() > 5'000'000) return true;
+
+    for (const u_char c : original) {
+        // Anything under space is a non text char which must be considered binary
+        if (c < 0x20 && c != 0x09 && c != 0x0A && c != 0x0D) return true;
+    }
+
+    return false;
 }
 
 std::string proxy::converters::RawToBinary::convert(const std::string_view path, const std::string_view original, const bool censor) const {

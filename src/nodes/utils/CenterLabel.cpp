@@ -1,9 +1,9 @@
 #include "CenterLabel.hpp"
 
-CenterLabel* CenterLabel::create(const std::string_view string, const std::string_view font) {
+CenterLabel* CenterLabel::create(const ZStringView string, const ZStringView font) {
     CenterLabel* instance = new CenterLabel();
 
-    if (instance && instance->initWithString(StringBuffer(string).c_str(), StringBuffer(font).c_str())) {
+    if (instance && instance->initWithString(string.c_str(), font.c_str())) {
         instance->autorelease();
 
         return instance;
@@ -15,14 +15,12 @@ CenterLabel* CenterLabel::create(const std::string_view string, const std::strin
 
 void CenterLabel::updateLabel() {
     CCLabelBMFont::updateLabel();
-    CCLabelBMFont* referenceLabel = CCLabelBMFont::create("0", this->getFntFile());
     const size_t count = this->getChildrenCount();
-
-    referenceLabel->setScale(this->getScale());
 
     if (count) {
         CCSprite* referenceSprite = this->getChildByIndex<CCSprite>(0);
-        const float heightAddition = referenceLabel->getContentHeight() / 2 - referenceSprite->getPositionY();
+        const float referenceHeight = CCLabelBMFont::create("0", this->getFntFile())->getContentHeight() * this->getScale();
+        const float heightAddition = referenceHeight / 2 - referenceSprite->getPositionY();
 
         for (int i = 0; i < count; i++) {
             CCNode* child = this->getChildByIndex(i);

@@ -8,11 +8,11 @@
 #include "cells/CategoryCell.hpp"
 #include "utils/CullingList.hpp"
 #include "cells/CullingCell.hpp"
-#include "cells/CodeLineCell.hpp"
 #include "../utils/KeybindNode.hpp"
+#include "cells/CodeSectionCell.hpp"
 #include "utils/TracklessScrollbar.hpp"
 #include "../../proxy/ProxyHandler.hpp"
-#include "../../objects/JSONTokenizer.hpp"
+#include "../../objects/JSONTokenizer2.hpp"
 
 class CodeBlock : public KeybindNode<Border>, public FLAlertLayerProtocol {
 public:
@@ -21,7 +21,7 @@ public:
     void reloadCode();
     void reloadSideBar();
     void updateInfo(std::shared_ptr<proxy::HttpInfo> info);
-    void setCode(const proxy::HttpInfo::Content& code);
+    void setCode(proxy::HttpInfo::Content code);
     std::shared_ptr<proxy::HttpInfo> getActiveInfo() const;
 private:
     static const std::vector<SideBarCell::SideBarView> VIEWS;
@@ -31,13 +31,15 @@ private:
     std::shared_ptr<proxy::HttpInfo> m_info;
     std::vector<arc::TaskHandle<web::WebResponse>> m_resendTasks;
     SideBar* m_bar;
-    std::string m_code;
+    UniqueString m_code;
     std::tuple<TracklessScrollbar*, TracklessScrollbar*> m_scrollbars;
     CCLayerColor* m_corner;
 
     CodeBlock();
     void setup() override;
     bool init(const CCSize& size);
+    void setupSections(proxy::enums::ContentType contentType);
+    void setupScrollbars();
     void showMessage(std::string message, const ccColor3B& color = { 0xFF, 0xFF, 0xFF });
     void scroll(const float x, const float y);
     bool onCopyView();

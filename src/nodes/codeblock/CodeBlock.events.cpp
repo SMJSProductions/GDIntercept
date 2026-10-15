@@ -88,12 +88,12 @@ void CodeBlock::setup() {
     this->bind("code_line_up", [this]() {
         const Theme::Theme& theme = Theme::getTheme();
 
-        this->scroll(0, -(theme.code.font.getTrueFontSize().height + theme.code.font.lineHeight));
+        this->scroll(0, -(theme.code.font.getFontSize().height + theme.code.font.lineHeight));
     }, true);
     this->bind("code_line_down", [this]() {
         const Theme::Theme& theme = Theme::getTheme();
 
-        this->scroll(0, theme.code.font.getTrueFontSize().height + theme.code.font.lineHeight);
+        this->scroll(0, theme.code.font.getFontSize().height + theme.code.font.lineHeight);
     }, true);
     this->bind("code_page_up", [this]() {
         this->scroll(0, -this->getNode()->getContentHeight());
@@ -105,18 +105,18 @@ void CodeBlock::setup() {
         const CullingList* list = typeinfo_cast<CullingList*>(this->getNode());
         const std::vector<CullingCell*>& cells = list->getCells();
 
-        this->scroll(cells.empty() ? 0 : list->getContentWidth() - typeinfo_cast<CodeLineCell*>(cells.front())->getCodeLineWidth(), 0);
+        this->scroll(cells.empty() ? 0 : list->getContentWidth() - reinterpret_cast<CodeSectionCell*>(cells.front())->getLineNumberWidth(), 0);
     }, true);
     this->bind("code_page_right", [this]() {
         const CullingList* list = typeinfo_cast<CullingList*>(this->getNode());
         const std::vector<CullingCell*>& cells = list->getCells();
 
-        this->scroll(cells.empty() ? 0 : -(list->getContentWidth() - typeinfo_cast<CodeLineCell*>(cells.front())->getCodeLineWidth()), 0);
+        this->scroll(cells.empty() ? 0 : -(list->getContentWidth() - reinterpret_cast<CodeSectionCell*>(cells.front())->getLineNumberWidth()), 0);
     }, true);
 }
 
 bool CodeBlock::onCopyView() {
-    utils::clipboard::write(m_code);
+    utils::clipboard::write(m_code.zString());
     this->showMessage("View Copied");
 
     return true;
@@ -138,8 +138,7 @@ bool CodeBlock::onCopyCurl() {
 
 bool CodeBlock::onSend() {
     const HttpInfo::Request& original = m_info->getRequest();
-    const std::string& method = original.getMethod();
-    const std::string& body = original.getBody();
+    const std::string_view body = original.getBody();
     web::WebRequest request;
 
     if (body.size()) {
@@ -147,12 +146,12 @@ bool CodeBlock::onSend() {
     }
 
     for (const auto& [name, list] : original.getHeaders()) {
-        for (const std::string value : list) {
+        for (const std::string& value : list) {
             request.header(name, std::move(value));
         }
     }
 
-    m_resendTasks.emplace_back(async::spawn(request.send(method, m_info->getURL().getReconstruction())));
+    m_resendTasks.emplace_back(async::spawn(request.send(original.getMethod(), m_info->getURL().getReconstruction())));
 
     this->showMessage("Request Resent");
 
@@ -176,23 +175,27 @@ bool CodeBlock::onOpenSaveFiles() {
 
 bool CodeBlock::onSave() {
     Mod* mod = Mod::get();
-    std::string filename = fmt::format("{:%Y-%m-%d_%H-%M-%S} - {}.txt", geode::localtime(std::time(nullptr)), m_info->getURL().getHost());
 
     async::spawn(utils::file::pick(file::PickMode::OpenFolder, {
         .defaultPath = mod->getSavedValue("default-path", mod->getSaveDir())
-    }), [
-        this,
-        mod,
-        filename = std::move(filename),
-        contents = m_info->toString()
-    ](const Result<std::optional<std::filesystem::path>> result) {
-        Loader::get()->queueInMainThread([this, mod, result, filename = std::move(filename), contents = std::move(contents)]{
+    }), [this, mod](Result<std::optional<std::filesystem::path>> result) {
+        Loader::get()->queueInMainThread([this, mod, result = std::move(result)] mutable {
+            std::string filename = fmt::format("{:%Y-%m-%d_%H-%M-%S} - {}.txt", geode::localtime(std::time(nullptr)), m_info->getURL().getHost());
+
             if (result.isErr()) {
-                this->showMessage("Error Picking File", { 0xFF, 0x00, 0x00 });
-            } else if (!result.unwrap()) {
+                return this->showMessage("Error Picking File", { 0xFF, 0x00, 0x00 });
+            }
+
+            std::optional<std::filesystem::path> optPah = std::move(result).unwrap();
+
+            if (!optPah) {
                 this->showMessage("File Save Cancelled", { 0xFF, 0xFF, 0x00 });
-            } else if (utils::file::writeString(result.unwrap().value() / std::move(filename), std::move(contents)).isOk()) {
-                mod->setSavedValue("default-path", std::move(result).unwrap());
+            }
+
+            std::filesystem::path path = std::move(optPah).value();
+
+            if (utils::file::writeString(path / std::move(filename), m_info->toString()).isOk()) {
+                mod->setSavedValue("default-path", path);
 
                 this->showMessage("File Saved");
             } else {
@@ -242,10 +245,10 @@ bool CodeBlock::onFormatted(const SideBarCell::OriginalCallback& original) {
 }
 
 void CodeBlock::onInfo() {
-    if (!m_info) {
-        this->setCode({ ContentType::UNKNOWN_CONTENT, "" });
-    } else {
+    if (m_info) {
         this->setCode({ ContentType::UNKNOWN_CONTENT, m_info->toString(true) });
+    } else {
+        this->setCode({ ContentType::UNKNOWN_CONTENT, "" });
     }
 }
 
@@ -267,7 +270,7 @@ void CodeBlock::onQuery() {
 
 void CodeBlock::onRequestHeaders() {
     if (m_info) {
-        this->setCode(m_info->getRequest().getHeaderList(Mod::get()->getSettingValue<bool>("raw-data")));
+        this->setCode(m_info->getRequest().getHeaderContent(Mod::get()->getSettingValue<bool>("raw-data")));
     } else {
         this->setCode({ ContentType::UNKNOWN_CONTENT, "" });
     }
@@ -277,7 +280,7 @@ void CodeBlock::onResponse() {
     if (!m_info || m_info->isInProgress() || m_info->isPaused()) {
         this->setCode({ ContentType::UNKNOWN_CONTENT, "" });
     } else if (m_info->isCompleted()) {
-        this->setCode(m_info->getResponse()->getResponseContent(Mod::get()->getSettingValue<bool>("raw-data")));
+        this->setCode(m_info->getResponse()->getBodyContent(Mod::get()->getSettingValue<bool>("raw-data")));
     } else {
         this->setCode({ ContentType::JSON, m_info->getResponse()->stringifyStatusCode() });
     }
@@ -287,7 +290,7 @@ void CodeBlock::onResponseHeaders() {
     if (!m_info || m_info->isInProgress() || m_info->isPaused()) {
         this->setCode({ ContentType::UNKNOWN_CONTENT, "" });
     } else if (m_info->isCompleted()) {
-        this->setCode(m_info->getResponse()->getHeaderList(Mod::get()->getSettingValue<bool>("raw-data")));
+        this->setCode(m_info->getResponse()->getHeaderContent(Mod::get()->getSettingValue<bool>("raw-data")));
     } else {
         this->setCode({ ContentType::JSON, m_info->getResponse()->stringifyStatusCode() });
     }

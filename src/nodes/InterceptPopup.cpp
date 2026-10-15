@@ -21,12 +21,12 @@ InterceptPopup* InterceptPopup::get() {
 }
 
 void InterceptPopup::scene() {
-    const CCSize uiSize = CCDirector::sharedDirector()->getWinSize() - InterceptPopup::POPUP_PADDING;
+    CCSize uiSize = CCDirector::sharedDirector()->getWinSize() - InterceptPopup::POPUP_PADDING;
 
     if (!InterceptPopup::get()) {
         InterceptPopup* instance = new InterceptPopup(uiSize);
 
-        if (instance && instance->init(uiSize)) {
+        if (instance && instance->init(std::move(uiSize))) {
             instance->m_noElasticity = true;
             instance->setID("intercept_popup"_spr);
             instance->autorelease();
@@ -44,8 +44,8 @@ m_codeBlock(nullptr),
 m_list(nullptr),
 m_settings(nullptr) { }
 
-bool InterceptPopup::init(const CCSize& size) {
-    ESCAPE_WHEN(!Popup::init(size.width, size.height), false);
+bool InterceptPopup::init(CCSize size) {
+    ESCAPE_WHEN(!Popup::init(std::move(size)), false);
 
     this->setTitle("Intercepted Requests");
     this->setupCodeBlock();
@@ -96,7 +96,7 @@ void InterceptPopup::preReload() {
 
     if (std::find(nodes.begin(), nodes.end(), m_settings) != nodes.end()) {
         m_settings->removeFromParent();
-        
+
         m_settingsShouldReload = true;
     }
 }

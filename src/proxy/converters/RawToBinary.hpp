@@ -7,7 +7,7 @@ namespace proxy::converters {
     class RawToBinary : public Converter {
     public:
         RawToBinary();
-        bool canConvert(const std::string_view path, const bool isBody, const std::string_view original) const override;
+        bool canConvert(const std::string_view path, const bool isRequest, const std::string_view original) const override;
         std::string convert(const std::string_view path, const std::string_view original, const bool censor) const override;
         std::string toRaw(const std::string_view path, const std::string_view original) const override;
     private:

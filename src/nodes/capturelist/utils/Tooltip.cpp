@@ -1,6 +1,6 @@
 #include "Tooltip.hpp"
 
-Tooltip* Tooltip::create(const std::string_view text, const float scale, const GLubyte opacity) {
+Tooltip* Tooltip::create(const ZStringView text, const float scale, const GLubyte opacity) {
     Tooltip* instance = new Tooltip();
 
     if (instance && instance->init(text, scale, opacity)) {
@@ -13,8 +13,8 @@ Tooltip* Tooltip::create(const std::string_view text, const float scale, const G
     }
 }
 
-bool Tooltip::init(const std::string_view text, const float scale, const GLubyte opacity) {
-    CCLabelBMFont* label = CCLabelBMFont::create(StringBuffer(text).c_str(), "bigFont.fnt");
+bool Tooltip::init(const ZStringView text, const float scale, const GLubyte opacity) {
+    CCLabelBMFont* label = CCLabelBMFont::create(text.c_str(), "bigFont.fnt");
 
     label->setScale(scale);
 

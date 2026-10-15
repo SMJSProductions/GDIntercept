@@ -1,6 +1,15 @@
 # GDIntercept Changelog
 
-## v0.8.11 
+## v0.9.0
+
+- Add a proper difference between localhost & LAN
+- Add a condition to render anything over 5Mb in binary
+- Fix culling performance by rendering code in sections rather than lines
+- Complete proxy rewrite
+- Complete codeblock rendering rewrite
+- Complete tokenizer rewrite
+
+## v0.8.11
 
 - Increase overal performance
 - Increase performance when loading binary views

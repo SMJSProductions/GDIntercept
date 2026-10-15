@@ -91,35 +91,38 @@ bool ActionCell::init() {
     ESCAPE_WHEN(!HoverNode::init(), false);
     ESCAPE_WHEN(!CCLayerColor::initWithColor(theme.menu.foreground), false);
 
-    CCLabelBMFont* referenceSizeNode = theme.menu.font.createLabel("0");
+    const float referenceHeight = theme.menu.font.getTrueFontSize().height;
     const bool oldState = m_state;
-    const float referenceHeight = referenceSizeNode->getChildByIndex(0)->getContentHeight() * theme.menu.font.fontScale;
-    const float height = referenceSizeNode->getScaledContentHeight() + theme.menu.font.lineHeight;
-    const CCSize referenceSize = { referenceHeight, referenceHeight };
-    m_icon = RescalingNode::create(CCNode::create(), referenceSize);
-    m_name = CenterLabel::create("", theme.menu.font.fontName);
+    SimpleAxisLayout* layout = SimpleRowLayout::create()
+        ->setGap(theme.menu.paddingCenter)
+        ->setPadding({ theme.menu.paddingLeft, 0, theme.menu.paddingRight, 0 })
+        ->setMainAxisScaling(AxisScaling::Fit)
+        ->setCrossAxisScaling(AxisScaling::None)
+        ->setMainAxisAlignment(MainAxisAlignment::Between);
+
+    m_icon = RescalingNode::create(CCNode::create(), { referenceHeight, referenceHeight });
+    m_name = CenterLabel::create("0", theme.menu.font.fontName);
 
     theme.menu.text.applyTo(m_name);
     m_name->setScale(theme.menu.font.fontScale);
-    m_name->setAnchorPoint(CENTER_LEFT);
-    m_name->setPosition({ theme.menu.paddingLeft, height / 2 });
-    m_icon->setAnchorPoint(CENTER_LEFT);
-    m_icon->setPosition({ theme.menu.paddingLeft + theme.menu.paddingCenter + m_name->getScaledContentWidth(), height / 2 });
 
     this->setOpacity(0);
-    this->setContentHeight(height);
+    this->setContentHeight(m_name->getScaledContentHeight() + theme.menu.font.lineHeight);
     this->addChild(m_icon);
-    this->addChild(m_name);
+    this->setLayout(layout);
+
+    m_minWidth = this->getContentWidth();
+
+    this->insertBefore(m_name, m_icon);
     this->setState(!oldState);
 
-    const float maxWidthOpposite = this->getMaxCellWidth();
+    m_maxWidth = this->getContentWidth();
 
     this->setState(oldState);
 
-    m_icon->setPositionX(theme.menu.paddingLeft + theme.menu.paddingCenter + m_name->getScaledContentWidth());
+    m_maxWidth = std::max(m_maxWidth, this->getContentWidth());
 
-    m_minWidth = referenceSize.width + theme.menu.paddingLeft + theme.menu.paddingRight;
-    m_maxWidth = std::max(this->getMaxCellWidth(), maxWidthOpposite);
+    this->setLayout(layout->setMainAxisScaling(AxisScaling::None));
 
     return true;
 }
@@ -133,10 +136,7 @@ void ActionCell::setState(const bool state) {
     m_name->setCString(button.name.c_str());
     m_icon->setNode(icon);
     theme.menu.icons.actionIcon.applyTo(icon);
-}
-
-float ActionCell::getMaxCellWidth() const {
-    return m_icon->getPositionX() + m_icon->getScaledContentWidth() + Theme::getTheme().menu.paddingRight;
+    this->updateLayout();
 }
 
 void ActionCell::hideOpacity(const float dt) {
@@ -180,12 +180,10 @@ void ActionCell::unHover() {
 
 void ActionCell::onScaleToMin() {
     m_name->setVisible(false);
-    m_icon->setAnchorPoint(CENTER);
-    m_icon->setPositionX(m_minWidth / 2);
+    this->updateLayout();
 }
 
 void ActionCell::onScaleToMax() {
     m_name->setVisible(true);
-    m_icon->setAnchorPoint(CENTER_RIGHT);
-    m_icon->setPositionX(m_maxWidth - Theme::getTheme().menu.paddingRight);
+    this->updateLayout();
 }

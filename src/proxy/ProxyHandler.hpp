@@ -8,7 +8,7 @@ namespace proxy {
     class ProxyHandler : private CCObject {
     public:
         static ProxyHandler* create(CCHttpRequest* request);
-        static ProxyHandler* create(std::string_view modID, web::WebRequest& request);
+        static ProxyHandler* create(web::WebRequest& request);
         static Stream<ProxyHandler*> getFilteredProxies();
         static bool isProxy(CCHttpRequest* request);
         static bool isProxy(const web::WebRequest& request);
@@ -20,9 +20,8 @@ namespace proxy {
         ProxyHandler& operator=(const ProxyHandler&) = delete;
 
         ProxyHandler(CCHttpRequest* request);
-        ProxyHandler(std::string_view modID, web::WebRequest& request);
+        ProxyHandler(web::WebRequest& request);
         ProxyHandler(const ProxyHandler&) = delete;
-        ~ProxyHandler();
 
         std::shared_ptr<HttpInfo> getInfo() noexcept;
     private:
@@ -33,13 +32,11 @@ namespace proxy {
 
         static void registerProxy(ProxyHandler* proxy);
 
-        GETTER(std::optional<CCHttpRequest*>, cocosRequest, CocosRequest);
-        GETTER(std::optional<web::WebRequest>, modRequest, ModRequest);
         std::shared_ptr<HttpInfo> m_info;
         std::optional<ListenerHandle> m_responseListener;
         std::vector<ListenerHandle> m_proxyListeners;
         CCObject* m_originalTarget;
-        SEL_HttpResponse m_originalProxy;
+        SEL_HttpResponse m_originalListener;
         bool m_finished;
 
         void onCocosResponse(CCHttpClient* client, CCHttpResponse* response);

@@ -23,7 +23,8 @@ namespace Theme {
         float fontScale;
         float lineHeight;
 
-        CCLabelBMFont* createLabel(const std::string_view text) const;
+        CCLabelBMFont* createLabel(const ZStringView text) const;
+        CCSize getFontSize() const;
         CCSize getTrueFontSize() const;
     };
 

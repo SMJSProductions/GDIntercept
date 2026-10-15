@@ -29,8 +29,8 @@ protected:
     bool m_xAxisLocked;
     bool m_disableCulling;
 
-    CullingList(std::vector<CullingCell*> cells);
-    bool init(const CCSize& size);
+    CullingList();
+    bool init(const CCSize& size, std::vector<CullingCell*> cells);
     bool shouldDisableVertical();
     void horizontalRender(CullingCell* cell);
     CullingCell* renderCell(const size_t index);

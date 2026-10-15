@@ -23,7 +23,7 @@ bool ModMenuLayer::init() {
     menuItem->setID("GDI"_spr);
     closeMenu->addChild(menuItem);
     closeMenu->updateLayout();
-    
+
     return true;
 }
 

@@ -36,3 +36,33 @@ constexpr ccColor3B BROWN_3B({ 0xA0, 0x54, 0x34 });
 constexpr ccColor4B BROWN_4B({ 0xA0, 0x54, 0x34, FULL_OPACITY });
 constexpr ccColor3B DARK_BROWN_3B({ 0x82, 0x40, 0x21 });
 constexpr ccColor4B DARK_BROWN_4B({ 0x82, 0x40, 0x21, FULL_OPACITY });
+
+class UniqueString {
+    std::string m_string;
+public:
+    UniqueString& operator=(UniqueString&& other) noexcept = default;
+    UniqueString& operator=(const UniqueString& other) noexcept = delete;
+
+    UniqueString() = default;
+    UniqueString(const char* other) noexcept : m_string(other) { }
+    UniqueString(std::string other) noexcept : m_string(other) { }
+    UniqueString(const std::string_view other) noexcept : m_string(other) { }
+    UniqueString(UniqueString&& other) noexcept = default;
+    UniqueString(const UniqueString& other) noexcept = delete;
+
+    inline std::string_view view() const {
+        return m_string;
+    }
+
+    inline ZStringView zString() const {
+        return m_string;
+    }
+
+    inline const char* c_str() const {
+        return m_string.c_str();
+    }
+
+    inline size_t size() const {
+        return m_string.size();
+    }
+};

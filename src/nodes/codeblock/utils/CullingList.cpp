@@ -1,9 +1,9 @@
 #include "CullingList.hpp"
 
 CullingList* CullingList::create(const CCSize& size, std::vector<CullingCell*> cells) {
-    CullingList* instance = new CullingList(std::move(cells));
+    CullingList* instance = new CullingList();
 
-    if (instance && instance->init(size)) {
+    if (instance && instance->init(size, std::move(cells))) {
         instance->autorelease();
 
         return instance;
@@ -13,10 +13,7 @@ CullingList* CullingList::create(const CCSize& size, std::vector<CullingCell*> c
     }
 }
 
-CullingList::CullingList(std::vector<CullingCell*> cells) : m_cells(std::move(cells)),
-m_cellHeight(cells.empty() ? 0 : cells.at(0)->m_height),
-m_view(nullptr),
-m_disableCulling(false) { }
+CullingList::CullingList() : m_view(nullptr), m_disableCulling(false) { }
 
 CullingList::~CullingList() {
     for (CullingCell* cell : m_cells) {
@@ -26,36 +23,44 @@ CullingList::~CullingList() {
     }
 }
 
-bool CullingList::init(const CCSize& size) {
+bool CullingList::init(const CCSize& size, std::vector<CullingCell*> cells) {
     ESCAPE_WHEN(!HoverNode::init(), false);
     ESCAPE_WHEN(!CCLayerColor::initWithColor(ccc4(0x00, 0x00, 0x00, 0x00), size.width, size.height), false);
 
     m_view = TableView::create(this, this, nullptr, CCRect(0, 0, size.width, size.height));
-    m_view->m_peekLimitTop = 0;
-    m_view->m_peekLimitBottom = 0;
+    m_view->m_peekLimitTop = m_view->m_peekLimitBottom = 0;
 
     m_view->setMouseEnabled(false);
     this->setMouseEnabled(false);
-    this->reloadData();
-    this->moveToTop();
-    this->addChild(m_view);
     this->scheduleUpdate();
+    this->addChild(m_view);
+    this->setCells(std::move(cells));
 
     return true;
 }
 
 void CullingList::reloadData() {
-    m_cellHeight = m_cells.empty() ? 0 : m_cells.at(0)->m_height;
-    m_maxCellWidth = 0;
-    m_scrollLockSteps = 0;
+    const size_t totalCells = m_cells.size();
+    float totalHeight;
+
+    if (totalCells) {
+        m_cellHeight = m_cells.front()->m_height;
+        totalHeight = m_cellHeight * (totalCells - 1) + m_cells.back()->m_mainLayer->getContentHeight();
+    } else {
+        m_cellHeight = totalHeight = 0;
+    }
+
+    m_maxCellWidth = m_scrollLockSteps = 0;
     m_lastOffset = ccp(0, 0);
 
     m_view->reloadData();
 
-    Stream(m_cells).forEach([this](CullingCell* cell) { m_maxCellWidth = std::max(m_maxCellWidth, cell->m_width); });
+    for (CullingCell* cell : m_cells) {
+        m_maxCellWidth = std::max(m_maxCellWidth, cell->m_width);
+    }
 
     m_view->m_contentLayer->setPositionX(0);
-    m_view->m_contentLayer->setContentSize({ m_maxCellWidth, m_cellHeight * m_cells.size() });
+    m_view->m_contentLayer->setContentSize({ m_maxCellWidth, totalHeight });
     m_view->m_disableHorizontal = m_maxCellWidth <= m_view->getContentWidth();
     m_view->m_disableVertical = this->shouldDisableVertical();
     // For some reason if m_view->m_disableVertical == false, m_view->m_disableHorizontal is ignored and rather relies on m_view->m_disableMovement
@@ -155,10 +160,9 @@ CullingCell* CullingList::renderCell(const size_t index) {
 
 void CullingList::horizontalRender(CullingCell* cell) {
     CCNode* node = cell->getChildByIDRecursive("horizontal-align");
-    const float x = -m_view->m_contentLayer->getPositionX();
 
     if (node != nullptr) {
-        node->setPositionX(x);
+        node->setPositionX(-m_view->m_contentLayer->getPositionX() + node->getScaledContentWidth() * node->getAnchorPoint().x);
     }
 }
 
@@ -170,8 +174,13 @@ void CullingList::update(const float dt) {
     const bool moved = contentOffset != m_lastOffset;
     const bool renderAll = m_view->m_disableVertical || m_disableCulling;
     const bool shouldSkipCulling = renderAll && m_activeCells.size() == size;
+    const CCSize& viewSize = m_view->getContentSize();
 
     // Alignment snapping
+    if (m_scrollLockSteps > 0) {
+        m_scrollLockSteps--;
+    }
+
     if (moved) {
         if (m_scrollLockSteps == 0) {
             m_xAxisLocked = std::abs(contentOffset.x - m_lastOffset.x) > std::abs(contentOffset.y - m_lastOffset.y);
@@ -189,34 +198,41 @@ void CullingList::update(const float dt) {
         }
     }
 
-    if (m_scrollLockSteps > 0) {
-        m_scrollLockSteps--;
+    // Why does this need to happen every step and not in moved
+    m_view->m_contentLayer->setPositionX(std::clamp(m_lastOffset.x, std::min(viewSize.width - m_maxCellWidth, 0.0f), 0.0f));
+
+    for (CullingCell* cell : m_activeCells) {
+        this->horizontalRender(cell);
     }
 
-    // Why does this need to happen every step and not in moved
-    m_view->m_contentLayer->setPositionX(std::min(0.0f, std::max(m_view->getContentWidth() - m_maxCellWidth, m_lastOffset.x)));
-    m_activeCells.forEach([this](CullingCell* cell) { this->horizontalRender(cell); });
-
     ESCAPE_WHEN(m_activeCells.size() && (!moved || shouldSkipCulling),);
-    const size_t offset = size - (renderAll ? 0 : std::max<int>(0, std::floor(-m_lastOffset.y / m_cellHeight))) - 1;
-    const size_t amount = renderAll ? size : std::min<size_t>(std::ceil(this->getContentHeight() / m_cellHeight), size) + 1;
+
+    // The actual culling part
+    size_t offset = 0;
+    size_t end = size;
+
+    if (!renderAll) {
+        offset = std::clamp<size_t>((m_view->m_contentLayer->getContentHeight() - viewSize.height + m_lastOffset.y) / m_cellHeight, 0, size - 1);
+        // TODO: If I don't feel lazy, integrate a offset modulo into this calculation to figure out if the last cell is already out of bounds as this calculation
+        // just checks how many cells can fit, not how many cells are needed to fill the screen at the current scroll
+        end = std::min<size_t>(offset + std::ceil(viewSize.height / m_cellHeight) + 1, size);
+    }
+
     Stream<CullingCell*> newActiveCells;
 
-    IntStream<size_t>::range(amount)
-        .map([offset](const size_t i) { return offset - i; })
-        .filter([renderAll, size](const size_t index) { return renderAll || (index >= 0 && index < size); })
-        .forEach([this, &newActiveCells](const size_t index) {
-            CullingCell* cell = this->renderCell(index);
+    for (size_t i = offset; i < end; i++) {
+        CullingCell* cell = this->renderCell(i);
 
-            this->horizontalRender(cell);
-            newActiveCells.push_back(cell);
-        });
+        this->horizontalRender(cell);
+        newActiveCells.push_back(cell);
+    }
 
-    m_activeCells.filter([&newActiveCells](CullingCell* cell) { return !newActiveCells.includes(cell); })
-        .forEach([](CullingCell* cell) {
-            cell->removeFromParentAndCleanup(false);
-            cell->discard();
-        });
+    for (CullingCell* cell : m_activeCells) {
+        if (newActiveCells.includes(cell)) continue;
+
+        cell->removeFromParentAndCleanup(false);
+        cell->discard();
+    }
 
     m_activeCells = std::move(newActiveCells);
 }

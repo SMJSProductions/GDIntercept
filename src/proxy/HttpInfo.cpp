@@ -4,6 +4,7 @@
 using namespace nlohmann;
 using namespace geode::prelude;
 using namespace proxy::prelude;
+using namespace asp::time;
 using namespace web;
 
 static std::atomic_size_t globalIndexCounter = 1;
@@ -22,18 +23,13 @@ HttpInfo::Content HttpInfo::getContent(const bool raw, const ContentType origina
 
         if (!raw) {
             return { converter->getResultContentType(), converter->convert(path, original, censor) };
-        } else if (
-            (
-                (censor && Mod::get()->getSettingValue<bool>("censor-data")) &&
-                converter->isNeedsCensoring()
-            ) ||
-            Mod::get()->getSettingValue<bool>("mask-telemetry") && converter->isNeedsMasking()
-        ) {
+        } else if (censor && converter->isNeedsCensoring() && Mod::get()->getSettingValue<bool>("censor-data")) {
             return { originalContentType, converter->toRaw(path, converter->convert(path, original, censor)) };
         }
     }
 
-    return { originalContentType, std::string(original) };
+    // TODO: This is copying, see if there's any way around it
+    return { originalContentType, UniqueString(original) };
 }
 
 HttpInfo::Content HttpInfo::getHeaders(const bool raw, const Headers& headers) {
@@ -61,29 +57,16 @@ HttpInfo::Content HttpInfo::getHeaders(const bool raw, const Headers& headers) {
     }
 }
 
-ContentType HttpInfo::determineContentType(const std::string_view path, const bool isBody, const std::string_view content) {
-    if (content.empty()) {
-        return ContentType::UNKNOWN_CONTENT;
-    }
+ContentType HttpInfo::determineContentType(const std::string_view path, const bool isRequest, const std::string_view body) {
+    if (body.empty()) return ContentType::UNKNOWN_CONTENT;
 
     for (const auto& [type, converter] : HttpInfo::CONVERTERS) {
-        if (converter->canConvert(path, isBody, content)) {
+        if (converter->canConvert(path, isRequest, body)) {
             return type;
         }
     }
 
     return ContentType::UNKNOWN_CONTENT;
-}
-
-std::string HttpInfo::translateHttpVersion(const HttpVersion version) {
-    static const std::unordered_map<HttpVersion, std::string> translations {
-        { HttpVersion::VERSION_1_0, "HTTP/1.0" },
-        { HttpVersion::VERSION_1_1, "HTTP/1.1" },
-        { HttpVersion::VERSION_2_0, "HTTP/2" },
-        { HttpVersion::VERSION_3, "HTTP/3" }
-    };
-
-    return translations.contains(version) ? translations.at(version) : "HTTP/2";
 }
 
 HttpInfo::Headers HttpInfo::parseCocosHeaders(const gd::vector<char>* headers) {
@@ -134,27 +117,21 @@ HttpInfo::HttpInfo(CCHttpRequest* request) : m_id(globalIndexCounter++),
 m_client(Client::COCOS),
 m_state(Mod::get()->getSavedValue<bool>("paused") ? State::PAUSED : State::IN_PROGRESS),
 m_repeat(false),
-m_httpVersion("HTTP/1.1"),
 m_url(request->getUrl()),
-m_request(m_url, request) { }
+m_request(request, this) { }
 
-HttpInfo::HttpInfo(const std::string_view modID, const WebRequest& request) : m_id(globalIndexCounter++),
+HttpInfo::HttpInfo(const WebRequest& request) : m_id(globalIndexCounter++),
 m_client(Client::GEODE),
 m_state(State::IN_PROGRESS),
-m_modID(modID),
-m_repeat(modID == Mod::get()->getID()),
-m_httpVersion(HttpInfo::translateHttpVersion(request.getHttpVersion())),
+m_repeat(request.getMod() == Mod::get()),
 m_url(request.getUrl(), request),
-m_request(m_url, request) { }
+m_request(request, this) { }
 
 void HttpInfo::cancel() {
     if (m_state == State::IN_PROGRESS || m_state == State::PAUSED) {
-        std::shared_ptr<HttpInfo> self = shared_from_this();
-
         m_state = State::CANCELLED;
-        m_response.emplace(Response(self, static_cast<int>(GeodeWebError::REQUEST_CANCELLED)));
 
-        ProxyEvent(EventState::CANCEL).send(self);
+        ProxyEvent(EventState::CANCEL).send(shared_from_this());
     }
 }
 
@@ -182,66 +159,92 @@ bool HttpInfo::hasResponse() const {
     return m_response.has_value();
 }
 
+std::string HttpInfo::getHttpVersion() const {
+    return std::visit(makeVisitor{
+        [](CCHttpRequest* request) {
+            return "HTTP/1.1";
+        },
+        [](const web::WebRequest& request) {
+            switch (request.getHttpVersion()) {
+                case HttpVersion::VERSION_1_0: return "HTTP/1.0";
+                case HttpVersion::VERSION_1_1: return "HTTP/1.1";
+                case HttpVersion::VERSION_2_0: return "HTTP/2";
+                case HttpVersion::VERSION_3: return "HTTP/3";
+                default: return "HTTP/2";
+            }
+        }
+    }, m_request.m_original);
+}
+
 std::string HttpInfo::toString(const bool cutContent) const {
+    Duration requestTime = m_request.m_requestTime.timeSinceEpoch();
     Content bodyContent = m_request.getBodyContent();
-    utils::StringBuffer info;
     std::string scheme = m_url.getStringScheme();
+    utils::StringBuffer info;
 
     std::transform(scheme.begin(), scheme.end(), scheme.begin(), toupper);
 
-    info.append("Client: {}", m_client == Client::COCOS ? "Cocos2D-X" : "Geode");
-
-    if (m_modID.size()) {
-        info.append("\nMod ID: {}", m_modID);
-    }
+    std::visit(makeVisitor{
+        [&info](CCHttpRequest* request) {
+            info.append("Client: Cocos2D-X");
+        },
+        [&info](const web::WebRequest& request) {
+            info.append("Client: Geode\nMod ID: {}", request.getMod()->getID());
+        }
+    }, m_request.m_original);
 
     info.append("\nRequest Time: {}.{}\nHTTP Version: {}\nMethod: {}\nScheme: {}\nHost: {}",
-        geode::localtime(m_request.m_startTime / 1000),
-        m_request.m_startTime % 1000,
-        m_httpVersion,
+        geode::localtime(requestTime.seconds()),
+        requestTime.millis() % 1000,
+        this->getHttpVersion(),
         m_request.getMethod(),
         scheme,
         m_url.getHost()
     );
 
     if (m_url.getUsername().size() || m_url.getPassword().size()) {
-        info.append("\nUsername: {}", m_url.getUsername());
-        info.append("\nPassword: {}", m_url.getPassword());
+        info.append("\nUsername: {}\nPassword: {}", m_url.getUsername(), m_url.getPassword());
     }
 
     info.append("\nPath: {}", m_url.getPath());
 
     if (!cutContent) {
-        info.append("\nQuery: {}\nRequest Headers: {}\nBody:", m_url.stringifyQuery(), m_request.getHeaderList(false).contents);
-        
+        info.append("\nQuery: {}\nRequest Headers: {}\nBody:", m_url.stringifyQuery(), m_request.getHeaderContent(false).contents.view());
+
         if (bodyContent.contents.size()) {
             info.append(bodyContent.type == ContentType::JSON ? ' ' : '\n');
-            info.append(bodyContent.contents);
+            info.append(bodyContent.contents.view());
         }
     }
 
-    info.append("\nBody Size: {} Bytes", m_request.getBody().size());
+    info.append("\nBody Size: {} Bytes", m_request.getBodySize());
 
     if (m_url.getHash().size()) {
         info.append("\nHash: {}", m_url.getHash());
     }
 
-    if (!this->hasResponse() || !this->m_response->m_received) return info.str();
+    if (m_state == State::CANCELLED) {
+        info.append("\nStatus Code: Request Cancelled");
+    }
 
-    info.append("\nStatus Code: {}\nResponse Time: {}ms", m_response->stringifyStatusCode(), m_response->getResponseTime());
+    if (!this->hasResponse()) {
+        return info.str();
+    }
+
+    info.append("\nStatus Code: {}\nResponse Time: {}", m_response->stringifyStatusCode(), m_response->getResponseTime());
 
     if (!cutContent) {
-        const Content responseContent = m_response->getResponseContent();
+        const Content bodyContent = m_response->getBodyContent();
 
-        info.append("\nResponse Headers: {}\nResponse:", m_response->getHeaderList(false).contents);
+        info.append("\nResponse Headers: {}\nResponse:", m_response->getBodyContent(false).contents.view());
 
-        if (responseContent.contents.size()) {
-            info.append(responseContent.type == ContentType::JSON ? ' ' : '\n');
-            info.append(responseContent.contents);
+        if (bodyContent.contents.size()) {
+            info.append(bodyContent.type == ContentType::JSON ? ' ' : '\n');
+            info.append(bodyContent.contents.view());
         }
     }
 
-    info.append("\nResponse Size: {} Bytes", m_response->getResponse().size());
+    info.append("\nResponse Size: {} Bytes", m_response->getBodySize());
 
     return info.str();
 }
@@ -258,8 +261,8 @@ std::string HttpInfo::toCurl() const {
         );
     }
 
-    if (m_request.m_body.size()) {
-        command.append(" -d \"{}\"", StringUtils::replace(m_request.m_body, "\"", "\\\""));
+    if (m_request.getBodySize()) {
+        command.append(" -d \"{}\"", StringUtils::replace(m_request.getBody(), "\"", "\\\""));
     }
 
     return command.str();
@@ -269,123 +272,164 @@ void HttpInfo::resume() {
     m_state = State::IN_PROGRESS;
 }
 
-size_t HttpInfo::Request::getRequestTime() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-}
+/////////////////////////////////////////////////////////////////////
+// REQUEST
+/////////////////////////////////////////////////////////////////////
 
-std::string HttpInfo::Request::stringifyMethod(const CCHttpRequest::HttpRequestType method) {
-    switch (method) {
-        case CCHttpRequest::HttpRequestType::kHttpGet: return "GET";
-        case CCHttpRequest::HttpRequestType::kHttpPost: return "POST";
-        case CCHttpRequest::HttpRequestType::kHttpPut: return "PUT";
-        case CCHttpRequest::HttpRequestType::kHttpDelete: return "DELETE";
-        default: return "UNKNOWN";
+HttpInfo::Request::Request(OriginalRequest original, HttpInfo* info) : m_original(std::move(original)),
+m_info(info),
+m_contentType(HttpInfo::determineContentType(info->m_url.getPath(), true, this->getBody())) {
+    this->resetTime();
+
+    if (std::holds_alternative<CCHttpRequest*>(m_original)) {
+        std::get<CCHttpRequest*>(m_original)->retain();
     }
 }
 
-HttpInfo::Request::Request(const URL& url, CCHttpRequest* request) : m_method(Request::stringifyMethod(request->getRequestType())),
-m_path(url.getPath()),
-m_headers(HttpInfo::parseHeaderListStrings(HttpInfo::parseCocosHeaders(request->getHeaders()))),
-m_body(std::string(request->getRequestData(), request->getRequestDataSize())),
-m_contentType(HttpInfo::determineContentType(url.getPath(), true, m_body)),
-m_startTime(Request::getRequestTime()) {
-    if (Mod::get()->getSettingValue<bool>("mask-telemetry")) {
-        m_body = this->getBodyContent(true, false).contents;
-
-        request->setRequestData(m_body.c_str(), m_body.size());
+HttpInfo::Request::~Request() {
+    if (std::holds_alternative<CCHttpRequest*>(m_original)) {
+        std::get<CCHttpRequest*>(m_original)->release();
     }
 }
 
-HttpInfo::Request::Request(const URL& url, const WebRequest& request) : m_method(request.getMethod()),
-m_path(url.getPath()),
-m_headers(HttpInfo::parseHeaderListStrings(request.getHeaders())),
-m_startTime(Request::getRequestTime()) {
-    const ByteVector body = request.getBody().value_or(ByteVector());
-
-    m_body = std::string(body.begin(), body.end());
-    m_contentType = HttpInfo::determineContentType(url.getPath(), true, m_body);
+std::string HttpInfo::Request::getMethod() const {
+    return std::visit<std::string>(makeVisitor{
+        [](CCHttpRequest* request) {
+            switch (request->getRequestType()) {
+                case CCHttpRequest::HttpRequestType::kHttpGet: return "GET";
+                case CCHttpRequest::HttpRequestType::kHttpPost: return "POST";
+                case CCHttpRequest::HttpRequestType::kHttpPut: return "PUT";
+                case CCHttpRequest::HttpRequestType::kHttpDelete: return "DELETE";
+                default: return "UNKNOWN";
+            }
+        },
+        [](const web::WebRequest& request) { return request.getMethod(); }
+    }, m_original);
 }
 
-HttpInfo::Content HttpInfo::Request::getHeaderList(const bool raw) const {
-    return HttpInfo::getHeaders(raw, m_headers);
+HttpInfo::Headers HttpInfo::Request::getHeaders() const {
+    return HttpInfo::parseHeaderListStrings(std::visit(makeVisitor{
+        [](CCHttpRequest* request) { return HttpInfo::parseCocosHeaders(request->getHeaders()); },
+        [](const web::WebRequest& request) { return request.getHeaders(); }
+    }, m_original));
 }
 
-std::vector<std::string> HttpInfo::Request::getHeader(const std::string_view key) const {
-    const Headers::const_iterator it = m_headers.find(key);
+std::string_view HttpInfo::Request::getBody() const {
+    return std::visit(makeVisitor{
+        [](CCHttpRequest* request) { return std::string_view(request->getRequestData(), request->getRequestDataSize()); },
+        [](const web::WebRequest& request) {
+            // TODO: Make this .data()
+            const std::optional<ByteVector>& body = request.getBody();
 
-    if (it == m_headers.end()) {
-        return {};
-    } else {
-        return it->second;
-    }
+            return body.has_value() ? std::string_view(reinterpret_cast<const char*>(body->data()), body->size()) : std::string_view();
+        }
+    }, m_original);
+}
+
+size_t HttpInfo::Request::getBodySize() const {
+    return std::visit<size_t>(makeVisitor{
+        [](CCHttpRequest* request) { return request->getRequestDataSize(); },
+        [](const web::WebRequest& request) {
+            // TODO: Make this .data()
+            return request.getBody()->size();
+        }
+    }, m_original);
+}
+
+HttpInfo::Content HttpInfo::Request::getHeaderContent(const bool raw) const {
+    return HttpInfo::getHeaders(raw, this->getHeaders());
 }
 
 HttpInfo::Content HttpInfo::Request::getBodyContent(const bool raw, const bool censor) const {
-    return HttpInfo::getContent(raw, m_contentType, m_path, m_body, censor);
+    return HttpInfo::getContent(raw, m_contentType, m_info->m_url.getPath(), this->getBody(), censor);
 }
 
 void HttpInfo::Request::resetTime() {
-    m_startTime = Request::getRequestTime();
+    m_requestTime = SystemTime::now();
 }
 
-size_t HttpInfo::Response::calculateResponseTime(std::shared_ptr<HttpInfo> info) {
-    using namespace std::chrono;
+/////////////////////////////////////////////////////////////////////
+// RESPONSE
+/////////////////////////////////////////////////////////////////////
 
-    return duration_cast<milliseconds>(system_clock::now() - system_clock::time_point(milliseconds(info->m_request.getStartTime()))).count();
-}
-
-HttpInfo::Response::Response(std::shared_ptr<HttpInfo> info, const int code) : m_received(false),
-m_responseTime(Response::calculateResponseTime(info)),
-m_statusCode(code) { };
-
-HttpInfo::Response::Response(std::shared_ptr<HttpInfo> info, CCHttpResponse* response) : m_received(true),
-m_responseTime(Response::calculateResponseTime(info)),
-m_path(info->m_url.getPath()),
-m_headers(HttpInfo::parseHeaderListStrings(HttpInfo::parseCocosHeaders(response->getResponseHeader()))),
-m_statusCode(response->getResponseCode()) {
-    gd::vector<char>* data = response->getResponseData();
-
-    m_response = std::string(data->begin(), data->end());
-    m_contentType = HttpInfo::determineContentType(info->m_url.getPath(), false, m_response);
-}
-
-HttpInfo::Response::Response(std::shared_ptr<HttpInfo> info, const WebResponse& response) : m_received(true),
-m_responseTime(Response::calculateResponseTime(info)),
-m_path(info->m_url.getPath()),
-m_statusCode(response.code()),
-m_response(response.string().unwrapOrDefault()),
-m_contentType(HttpInfo::determineContentType(info->m_url.getPath(), false, m_response)) {
-    for (const std::string_view header : response.headers()) {
-        m_headers[std::string(header)] = response.getAllHeadersNamed(header).value_or(std::vector<std::string>());
+HttpInfo::Response::Response(OriginalResponse original, HttpInfo* info) : m_original(std::move(original)),
+m_info(info),
+m_responseTime((SystemTime::now() - info->m_request.m_requestTime).value_or(Duration())),
+m_contentType(HttpInfo::determineContentType(info->m_url.getPath(), false, this->getBody())) {
+    if (std::holds_alternative<CCHttpResponse*>(m_original)) {
+        // TODO: Use geode::Ref
+        std::get<CCHttpResponse*>(m_original)->retain();
     }
+}
 
-    m_headers = HttpInfo::parseHeaderListStrings(std::move(m_headers));
+HttpInfo::Response::~Response() {
+    if (std::holds_alternative<CCHttpResponse*>(m_original)) {
+        std::get<CCHttpResponse*>(m_original)->release();
+    }
+}
+
+int HttpInfo::Response::getStatusCode() const {
+    return std::visit(makeVisitor{
+        [](CCHttpResponse* response) { return response->getResponseCode(); },
+        [](const web::WebResponse& response) { return response.code(); }
+    }, m_original);
+}
+
+HttpInfo::Headers HttpInfo::Response::getHeaders() const {
+    return HttpInfo::parseHeaderListStrings(std::visit(makeVisitor{
+        [](CCHttpResponse* response) { return HttpInfo::parseCocosHeaders(response->getResponseHeader()); },
+        [](const web::WebResponse& response) {
+            Headers headers;
+
+            for (std::string header : response.headers()) {
+                std::vector<std::string> value = response.getAllHeadersNamed(header).value_or(std::vector<std::string>());
+
+                headers[std::move(header)] = std::move(value);
+            }
+
+            return HttpInfo::parseHeaderListStrings(std::move(headers));
+        }
+    }, m_original));
+}
+
+std::string_view HttpInfo::Response::getBody() const {
+    return std::visit(makeVisitor{
+        [](CCHttpResponse* response) {
+            gd::vector<char>* responseData = response->getResponseData();
+
+            return std::string_view(responseData->data(), responseData->size());
+        },
+        [](const web::WebResponse& response) {
+            const ByteVector& responseData = response.data();
+
+            return std::string_view(reinterpret_cast<const char*>(responseData.data()), responseData.size());
+        }
+    }, m_original);
+}
+
+size_t HttpInfo::Response::getBodySize() const {
+    return std::visit(makeVisitor{
+        [](CCHttpResponse* response) { return response->getResponseData()->size(); },
+        [](const web::WebResponse& response) { return response.data().size(); }
+    }, m_original);
 }
 
 std::string HttpInfo::Response::stringifyStatusCode() const {
-    switch (m_statusCode) {
+    const int statusCode = this->getStatusCode();
+
+    switch (statusCode) {
         case static_cast<int>(GeodeWebError::CURL_INITIALIZATION_ERROR): return "Curl Initialization Fail";
         case static_cast<int>(GeodeWebError::REQUEST_CANCELLED): return "Request Cancelled";
         case static_cast<int>(GeodeWebError::QUEUE_FULL): return "Async Queue Full";
         case static_cast<int>(GeodeWebError::CHANNEL_CLOSED): return "Channel Closed";
-        default: return std::to_string(m_statusCode);
+        default: return utils::numToString(statusCode);
     }
 }
 
-HttpInfo::Content HttpInfo::Response::getHeaderList(const bool raw) const {
-    return HttpInfo::getHeaders(raw, m_headers);
+HttpInfo::Content HttpInfo::Response::getHeaderContent(const bool raw) const {
+    return HttpInfo::getHeaders(raw, this->getHeaders());
 }
 
-HttpInfo::Content HttpInfo::Response::getResponseContent(const bool raw, const bool censor) const {
-    return HttpInfo::getContent(raw, m_contentType, m_path, m_response, censor);
-}
-
-std::vector<std::string> HttpInfo::Response::getHeader(const std::string_view key) const {
-    const Headers::const_iterator it = m_headers.find(key);
-
-    if (it == m_headers.end()) {
-        return {};
-    } else {
-        return it->second;
-    }
+HttpInfo::Content HttpInfo::Response::getBodyContent(const bool raw, const bool censor) const {
+    return HttpInfo::getContent(raw, m_contentType, m_info->m_url.getPath(), this->getBody(), censor);
 }

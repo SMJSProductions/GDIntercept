@@ -20,7 +20,6 @@ interface StringSchema extends BaseSchema<string> {
     minLength?: number;
     maxLength?: number;
     pattern?: string;
-    
 }
 
 interface IntegerSchema extends BaseSchema<number> {

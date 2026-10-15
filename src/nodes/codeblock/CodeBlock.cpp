@@ -84,26 +84,68 @@ void CodeBlock::updateInfo(std::shared_ptr<HttpInfo> info) {
     }
 }
 
-void CodeBlock::setCode(const HttpInfo::Content& code) {
+void CodeBlock::setCode(HttpInfo::Content code) {
+    m_code = std::move(code.contents);
+
+    this->setupSections(code.type);
+    this->setupScrollbars();
+    this->setBackgroundColor(Theme::getTheme().code.background);
+    this->resizeList();
+}
+
+void CodeBlock::setupSections(proxy::enums::ContentType contentType) {
     const Theme::Theme& theme = Theme::getTheme();
-    const CCSize fontSize = MonospaceLabel::getCharacterSize(theme.code.font.fontName) * theme.code.font.fontScale;
-    const float lineNumberWidth = fontSize.width * std::to_string(
-        std::count(code.contents.begin(), code.contents.end(), '\n') + 1
-    ).size() + theme.code.paddingLeft;
+    const std::string_view codeView = m_code.view();
     const size_t maxCharacters = Mod::get()->getSettingValue<int64_t>("max-characters-per-line");
+    const CCSize fontSize = cocos::getLabelSize("M", theme.code.font.fontName.c_str()) * theme.code.font.fontScale;
+    const size_t lineCount = std::count(codeView.begin(), codeView.end(), '\n') + 1;
+    const float lineNumberWidth = fontSize.width * std::to_string(lineCount).size() + theme.code.paddingLeft;
     const float lineHeight = fontSize.height + theme.code.font.lineHeight;
+    std::vector<JSONTokenizer2::TokenOffset> tokens = contentType == proxy::enums::ContentType::JSON ?
+        JSONTokenizer2(codeView).getTokens() :
+        std::vector<JSONTokenizer2::TokenOffset>{};
+    std::vector<JSONTokenizer2::TokenOffset> sectionTokens;
+    std::vector<std::string_view> section;
+    std::vector<CullingCell*> cells;
+    size_t tokenIndex = 0;
+
+    section.reserve(CodeSectionCell::LINES_PER_SECTION);
+    cells.reserve((lineCount + CodeSectionCell::LINES_PER_SECTION - 1) / CodeSectionCell::LINES_PER_SECTION);
+
+    for (size_t off = codeView.find('\n'), lastOff = 0, i = 0, maxLine = 0, total = 1; total <= lineCount; off = codeView.find('\n', off + 1), i++, total++) {
+        const bool isEnd = off == std::string_view::npos;
+        const std::string_view line = codeView.substr(lastOff, isEnd ? off : off - lastOff);
+        maxLine = std::max(maxLine, line.size());
+        lastOff = off + 1;
+
+        section.emplace_back(line);
+
+        while (tokenIndex < tokens.size() && tokens[tokenIndex].trueOffset < off) {
+            sectionTokens.emplace_back(std::move(tokens[tokenIndex++]));
+        }
+
+        if (i + 1 == CodeSectionCell::LINES_PER_SECTION || isEnd) {
+            cells.emplace_back(CodeSectionCell::create(
+                std::move(section),
+                std::move(sectionTokens),
+                total - i,
+                lineNumberWidth,
+                lineNumberWidth + theme.code.paddingCenter + fontSize.width * std::min<size_t>(maxCharacters, maxLine) + theme.code.paddingRight
+            ));
+
+            i = -1;
+            maxLine = 0;
+        }
+    }
+
+    reinterpret_cast<CullingList*>(this->getNode())->setCells(cells);
+}
+
+void CodeBlock::setupScrollbars() {
+    const Theme::Theme& theme = Theme::getTheme();
     TracklessScrollbar* scrollbarX = std::get<0>(m_scrollbars);
     TracklessScrollbar* scrollbarY = std::get<1>(m_scrollbars);
     CullingList* list = reinterpret_cast<CullingList*>(this->getNode());
-    JSONTokenizer tokenizer;
-
-    list->setCells(StringUtils::split(m_code = code.contents, '\n').map([&](std::string&& line, const size_t i) {
-        const float lineWidth = code.type == ContentType::BINARY ?
-            list->getContentWidth() :
-            lineNumberWidth + theme.code.paddingCenter + fontSize.width * std::min<size_t>(maxCharacters, line.size()) + theme.code.paddingRight;
-
-        return CodeLineCell::create({ lineWidth, lineHeight }, i + 1, lineNumberWidth, { code.type, std::move(line) }, tokenizer);
-    }).cast<CullingCell*>());
 
     if (list->isHorizontalLocked()) {
         if (scrollbarX) {
@@ -138,9 +180,6 @@ void CodeBlock::setCode(const HttpInfo::Content& code) {
         this->addChild(m_corner);
         list->moveToTop();
     }
-
-    this->setBackgroundColor(theme.code.background);
-    this->resizeList();
 }
 
 std::shared_ptr<HttpInfo> CodeBlock::getActiveInfo() const {
@@ -158,13 +197,13 @@ void CodeBlock::showMessage(std::string message, const ccColor3B& color) {
 
 void CodeBlock::scroll(const float x, const float y) {
     const TableView* tableView = reinterpret_cast<CullingList*>(this->getNode())->getView();
-    const float max = 0;
-    const CCSize min = -(tableView->m_contentLayer->getContentSize() - tableView->getContentSize());
+    const float min = 0;
+    const CCSize max = -(tableView->m_contentLayer->getContentSize() - tableView->getContentSize());
     const CCPoint position = tableView->m_contentLayer->getPosition();
 
     tableView->m_contentLayer->setPosition({
-        std::min(max, std::max(min.width, position.x + x)),
-        std::min(max, std::max(min.height, position.y + y))
+        std::clamp(position.x + x, min, max.width),
+        std::clamp(position.y + y, min, max.height)
     });
 }
 

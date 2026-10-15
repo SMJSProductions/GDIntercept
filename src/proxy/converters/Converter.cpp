@@ -4,8 +4,7 @@ using namespace nlohmann;
 using namespace geode::prelude;
 
 proxy::converters::Converter::Converter(const enums::ContentType resultContentType, const bool needsMasking) : m_needsCensoring(resultContentType == enums::ContentType::JSON),
-m_resultContentType(resultContentType),
-m_needsMasking(needsMasking) { }
+m_resultContentType(resultContentType) { }
 
 bool proxy::converters::isInt(const std::string_view str) {
     if (str.empty()) {

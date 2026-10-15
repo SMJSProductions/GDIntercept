@@ -15,7 +15,7 @@ public:
     void reloadCode();
     void reloadSideBar();
 protected:
-    bool init(const CCSize& size);
+    bool init(CCSize size);
 private:
     static CCSize POPUP_PADDING;
     static float UI_PADDING;

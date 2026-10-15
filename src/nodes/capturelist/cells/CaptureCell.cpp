@@ -163,7 +163,10 @@ std::vector<std::tuple<std::string, CCNode*, std::function<void(GLubyte)>>> Capt
             this->makeBadgeInfo("Geode Server Origin", CCSprite::createWithSpriteFrameName("geode-circle.png"_spr))
         ); break;
         case Origin::LOCALHOST: badges.push_back(
-            this->makeBadgeInfo("Localhost Origin", CCSprite::createWithSpriteFrameName("globe.png"_spr))
+            this->makeBadgeInfo("Localhost Origin", CCSprite::createWithSpriteFrameName("pc.png"_spr))
+        ); break;
+        case Origin::LAN: badges.push_back(
+            this->makeBadgeInfo("LAN", CCSprite::createWithSpriteFrameName("globe.png"_spr))
         ); break;
         case Origin::OTHER: badges.push_back(
             this->makeBadgeInfo("Unknown Origin", Character::create('?', "goldFont.fnt", true))

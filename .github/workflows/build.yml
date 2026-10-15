@@ -56,6 +56,9 @@ jobs:
       - name: Combine builds
         uses: geode-sdk/build-geode-mod/combine@main
         id: build
+        with:
+            zstd: true
+            optimize-pnmgs: true
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

@@ -114,7 +114,7 @@ namespace proxy::converters {
         };
     public:
         RobTopToJsonV2();
-        bool canConvert(const std::string_view path, const bool isBody, const std::string_view original) const override;
+        bool canConvert(const std::string_view path, const bool isRequest, const std::string_view original) const override;
         std::string convert(const std::string_view path, const std::string_view original, const bool censor) const override;
         std::string toRaw(const std::string_view path, const std::string_view original) const override;
     private:
@@ -123,6 +123,6 @@ namespace proxy::converters {
 
         inline std::string splitPath(const std::string_view path) const {
             return StringUtils::split(path, "/").back();
-        } 
+        }
     };
 }

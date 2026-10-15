@@ -4,7 +4,7 @@ using namespace nlohmann;
 
 proxy::converters::FormToJson::FormToJson() : Converter(enums::ContentType::JSON, true) { };
 
-bool proxy::converters::FormToJson::canConvert(const std::string_view path, const bool isBody, const std::string_view original) const {
+bool proxy::converters::FormToJson::canConvert(const std::string_view path, const bool isRequest, const std::string_view original) const {
     bool hasAssignment = false;
 
     for (const char character : original) {

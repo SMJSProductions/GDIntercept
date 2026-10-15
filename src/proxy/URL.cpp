@@ -181,20 +181,27 @@ void proxy::URL::determineOrigin() {
         m_origin = Origin::GD;
     } else if (m_domain == "geometrydashfiles.b-cdn.net" || m_domain == "geometrydashcontent.b-cdn.net") {
         m_origin = Origin::GD_CDN;
-    // robtop.games is currently in the process of being sold
     } else if (
         m_domain == "robtopgames.org" ||
         m_domain == "robtopgames.net" ||
-        m_domain == "robtopgames.com" ||
-        m_domain == "robtop.games"
+        m_domain == "robtopgames.com"
     ) {
         m_origin = Origin::ROBTOP_GAMES;
     } else if (m_domain == "ngfiles.com") {
         m_origin = Origin::NEWGROUNDS;
     } else if (m_domain == "geode-sdk.org") {
         m_origin = Origin::GEODE;
-    } else if (m_domain == "localhost") {
+    } else if (
+        m_domain == "localhost" ||
+        m_domain.starts_with("127.")
+    ) {
         m_origin = Origin::LOCALHOST;
+    } else if (
+        m_domain.starts_with("0.") ||
+        m_domain.starts_with("10.") ||
+        m_domain.starts_with("192.168.")
+    ) {
+        m_origin = Origin::LAN;
     } else {
         m_origin = Origin::OTHER;
     }

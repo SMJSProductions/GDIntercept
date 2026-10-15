@@ -61,7 +61,6 @@ private:
 
     ActionCell(CodeBlock* block, const SideBarCell::SideBarAction& action);
     bool init() override;
-    float getMaxCellWidth() const;
     void onHover() override;
     void unHover() override;
     void onScaleToMin() override;

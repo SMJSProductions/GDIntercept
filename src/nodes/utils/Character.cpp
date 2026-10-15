@@ -1,9 +1,9 @@
 #include "Character.hpp"
 
-Character* Character::create(const char character, const std::string_view font, const bool rescale) {
+Character* Character::create(const char character, const ZStringView font, const bool rescale) {
     Character* instance = new Character(rescale);
 
-    if (instance && instance->initWithString(std::string(1, character).c_str(), StringBuffer(font).c_str())) {
+    if (instance && instance->initWithString(std::string(1, character).c_str(), font.c_str())) {
         instance->autorelease();
 
         return instance;

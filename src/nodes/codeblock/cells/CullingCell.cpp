@@ -2,7 +2,7 @@
 
 CullingCell::CullingCell(const CCSize& size) : CullingCell("", size) { }
 
-CullingCell::CullingCell(const std::string_view id, const CCSize& size) : TableViewCell(StringBuffer(id).c_str(), size.width, size.height),
+CullingCell::CullingCell(const ZStringView id, const CCSize& size) : TableViewCell(id.c_str(), size.width, size.height),
 m_active(false),
 m_rendered(false) {
     m_listType = BoomListType::Default;
@@ -10,6 +10,7 @@ m_rendered(false) {
     this->retain();
     // Apparently you giving TableViewCell a size is useless because it just randomly picks a size
     m_mainLayer->setContentSize(size);
+    m_mainLayer->setAnchorPoint(BOTTOM_LEFT);
 }
 
 CullingCell::~CullingCell() {
@@ -29,7 +30,7 @@ void CullingCell::render() {
         this->firstRender();
     }
 
-    this->setContentSize(ccp(m_width, m_height));
+    this->setContentSize({ m_width, m_height });
     this->initRender();
     // In some weird edge cases, the cell may automatically be set to invisible. no clue why
     this->setVisible(true);

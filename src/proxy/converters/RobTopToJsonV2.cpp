@@ -377,7 +377,7 @@ ordered_json proxy::converters::RobTopToJsonV2::Object::parseTuple(const std::st
 
             if (!fieldInfo.vararg) {
                 field = std::move(value);
-            } else if (object.contains(fieldInfo.key)) { 
+            } else if (object.contains(fieldInfo.key)) {
                 field.emplace_back(std::move(value));
             } else {
                 field = ordered_json::array({ std::move(value) });
@@ -392,8 +392,8 @@ ordered_json proxy::converters::RobTopToJsonV2::Object::parseTuple(const std::st
 
 proxy::converters::RobTopToJsonV2::RobTopToJsonV2() : Converter(enums::ContentType::JSON) { };
 
-bool proxy::converters::RobTopToJsonV2::canConvert(const std::string_view path, const bool isBody, const std::string_view original) const {
-    return !isBody && RobTopToJsonV2::ENDPOINT_MAPPINGS.contains(this->splitPath(path));
+bool proxy::converters::RobTopToJsonV2::canConvert(const std::string_view path, const bool isRequest, const std::string_view original) const {
+    return !isRequest && RobTopToJsonV2::ENDPOINT_MAPPINGS.contains(this->splitPath(path));
 }
 
 std::string proxy::converters::RobTopToJsonV2::convert(const std::string_view path, const std::string_view original, const bool censor) const {
@@ -401,5 +401,6 @@ std::string proxy::converters::RobTopToJsonV2::convert(const std::string_view pa
 }
 
 std::string proxy::converters::RobTopToJsonV2::toRaw(const std::string_view path, const std::string_view original) const {
+    // TODO: Actually implement this
     return std::string(original);
 }

@@ -29,28 +29,31 @@ bool CategoryCell::init(const SideBarCategory& view) {
     ESCAPE_WHEN(!CCLayerColor::initWithColor(theme.menu.categoryBackground), false);
     ESCAPE_WHEN(!SharedWidthNode::init(), false);
 
-    CCLabelBMFont* referenceSizeNode = theme.menu.font.createLabel("0");
-    const float referenceHeight = referenceSizeNode->getChildByIndex(0)->getContentHeight() * theme.menu.font.fontScale;
-    const float height = referenceSizeNode->getScaledContentHeight() + theme.menu.font.lineHeight;
-    const CCSize referenceSize = { referenceHeight, referenceHeight };
+    const float referenceHeight = theme.menu.font.getTrueFontSize().height;
     CCSprite* icon = CCSprite::createWithSpriteFrameName(view.icon.c_str());
-    m_icon = RescalingNode::create(icon, referenceSize);
+    SimpleAxisLayout* layout = SimpleRowLayout::create()
+        ->setGap(theme.menu.paddingCenter)
+        ->setPadding({ theme.menu.paddingLeft, 0, theme.menu.paddingRight, 0 })
+        ->setMainAxisScaling(AxisScaling::Fit)
+        ->setCrossAxisScaling(AxisScaling::None)
+        ->setMainAxisAlignment(MainAxisAlignment::Between);
+
+    m_icon = RescalingNode::create(icon, { referenceHeight, referenceHeight });
     m_name = CenterLabel::create(view.name, theme.menu.font.fontName);
 
-    theme.menu.icons.categoryIcon.applyTo(icon);
-    m_icon->setAnchorPoint(CENTER_LEFT);
-    m_icon->setPositionY(height / 2);
-    theme.menu.categoryText.applyTo(m_name);
     m_name->setScale(theme.menu.font.fontScale);
-    m_name->setAnchorPoint(CENTER_LEFT);
-    m_name->setPosition({ theme.menu.paddingLeft, height / 2 });
+    theme.menu.icons.categoryIcon.applyTo(icon);
+    theme.menu.categoryText.applyTo(m_name);
 
-    this->setContentHeight(height);
+    this->setContentHeight(m_name->getScaledContentHeight() + theme.menu.font.lineHeight);
     this->addChild(m_icon);
-    this->addChild(m_name);
+    this->setLayout(layout);
 
-    m_minWidth = referenceSize.width + theme.menu.paddingLeft + theme.menu.paddingRight;
-    m_maxWidth = m_icon->getPositionX() + m_icon->getScaledContentWidth() + theme.menu.paddingRight;
+    m_minWidth = this->getContentWidth();
+    m_maxWidth = m_minWidth + theme.menu.paddingCenter + m_name->getScaledContentWidth();
+
+    this->insertBefore(m_name, m_icon);
+    this->setLayout(layout->setMainAxisScaling(AxisScaling::None));
 
     return true;
 }
@@ -61,24 +64,20 @@ void CategoryCell::onHover() {
 
 void CategoryCell::onScaleToMin() {
     m_name->setVisible(false);
-    m_icon->setAnchorPoint(CENTER);
-    m_icon->setPositionX(m_minWidth / 2);
+    this->updateLayout();
 }
 
 void CategoryCell::onScaleToMax() {
     m_name->setVisible(true);
-    m_icon->setAnchorPoint(CENTER_RIGHT);
-    m_icon->setPositionX(m_maxWidth - Theme::getTheme().menu.paddingRight);
+    this->updateLayout();
 }
 
 void CategoryCell::draw() {
-    const Theme::Theme& theme = Theme::getTheme();
     const CCSize& size = this->getContentSize();
 
     SharedWidthNode::draw();
 
-    ccDrawColor4B(theme.menu.categoryBorder);
+    ccDrawColor4B(Theme::getTheme().menu.categoryBorder);
     ccDrawLine(ZERO_POINT, { size.width, 0 });
-    ccDrawLine({ 0, size.height }, { size.width, size.height });
-
+    ccDrawLine({ 0, size.height }, size);
 }

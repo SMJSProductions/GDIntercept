@@ -175,5 +175,5 @@ public:
         return accumulator;
     }
 private:
-    std::vector<Entry> m_table;       
+    std::vector<Entry> m_table;
 };

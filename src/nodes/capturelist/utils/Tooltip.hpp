@@ -4,7 +4,7 @@
 
 class Tooltip : public Popup {
 public:
-    static Tooltip* create(const std::string_view text, const float scale, const GLubyte opacity = 255);
+    static Tooltip* create(const ZStringView text, const float scale, const GLubyte opacity = 255);
 protected:
-    bool init(const std::string_view text, const float scale, const GLubyte opacity);
+    bool init(const ZStringView text, const float scale, const GLubyte opacity);
 };

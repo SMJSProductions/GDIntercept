@@ -22,6 +22,7 @@ namespace proxy::enums {
         NEWGROUNDS,
         GEODE,
         LOCALHOST,
+        LAN,
         OTHER
     };
 

@@ -5,7 +5,7 @@
 class CullingCell : public TableViewCell {
 public:
     CullingCell(const CCSize& size);
-    CullingCell(const std::string_view id, const CCSize& size);
+    CullingCell(const ZStringView id, const CCSize& size);
     ~CullingCell();
     bool isActive();
     void render();

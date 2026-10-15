@@ -4,7 +4,7 @@ using namespace nlohmann;
 
 proxy::converters::JsonToJson::JsonToJson() : Converter(enums::ContentType::JSON) { };
 
-bool proxy::converters::JsonToJson::canConvert(const std::string_view path, const bool isBody, const std::string_view original) const {
+bool proxy::converters::JsonToJson::canConvert(const std::string_view path, const bool isRequest, const std::string_view original) const {
     return json::accept(original);
 }
 

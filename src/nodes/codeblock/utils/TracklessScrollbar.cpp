@@ -32,26 +32,47 @@ bool TracklessScrollbar::init(const CCSize& size, CCScrollLayerExt* scrollLayer)
     return true;
 }
 
+float TracklessScrollbar::calculateContentPosition(const float targetSize, const float contentSize, const float scrollSize, const float thumbSize, const float touchLocation) {
+    const float scrollableSize = scrollSize - thumbSize;
+    ESCAPE_WHEN(!scrollableSize, 0);
+    const float thumbPosition = std::clamp(touchLocation - thumbSize / 2, 0.0f, scrollableSize);
+
+    return -std::max(contentSize - targetSize, 0.0f) * thumbPosition / scrollableSize;
+}
+
+float TracklessScrollbar::calculateThumbSize(const float targetSize, const float contentSize, const float scrollSize) {
+    return std::clamp(targetSize / contentSize * scrollSize, 2.0f, scrollSize);
+}
+
+float TracklessScrollbar::calculateThumbLocation(const float targetSize, const float contentSize, const float scrollSize, const float thumbSize, const float contentPosition) {
+    const float listDelta = std::max(contentSize - targetSize, 0.0f);
+    ESCAPE_WHEN(!listDelta, scrollSize);
+    const float thumbPercentage = std::clamp(contentPosition / listDelta + 1, 0.0f, 1.0f);
+
+    return scrollSize - (scrollSize - thumbSize) * thumbPercentage;
+}
+
 void TracklessScrollbar::ccTouchMoved(CCTouch* touch, CCEvent* event) {
     CCScrollLayerExt* target = this->getTarget();
-    const CCSize& size = this->getContentSize();
-    const CCSize& targetSize = target->getContentSize();
-    const CCSize& targetContentSize = target->m_contentLayer->getContentSize();
-    const CCPoint touchLocation = this->convertTouchToNodeSpace(touch);
     const CCSize thumbSize = this->getThumb()->getScaledContentSize();
+    const CCPoint touchLocation = this->convertTouchToNodeSpace(touch);
 
     if (m_vertical) {
-        const float remainingHeight = size.height - thumbSize.height;
-        ESCAPE_WHEN(remainingHeight == 0,);
-        const float thumbY = std::min(std::max(0.0f, touchLocation.y - thumbSize.height / 2), remainingHeight);
-
-        target->m_contentLayer->setPositionY(-std::max(0.0f, targetContentSize.height - targetSize.height) * thumbY / remainingHeight);
+        target->m_contentLayer->setPositionY(this->calculateContentPosition(
+            target->getContentHeight(),
+            target->m_contentLayer->getContentHeight(),
+            this->getContentHeight(),
+            thumbSize.height,
+            touchLocation.y
+        ));
     } else {
-        const float remainingWidth = size.width - thumbSize.width;
-        ESCAPE_WHEN(remainingWidth == 0,);
-        const float thumbX = std::min(std::max(0.0f, touchLocation.x - thumbSize.width / 2), remainingWidth);
-
-        target->m_contentLayer->setPositionX(-std::max(0.0f, targetContentSize.width - targetSize.width) * thumbX / remainingWidth);
+        target->m_contentLayer->setPositionX(this->calculateContentPosition(
+            target->getContentWidth(),
+            target->m_contentLayer->getContentWidth(),
+            this->getContentWidth(),
+            thumbSize.width,
+            touchLocation.x
+        ));
     }
 }
 
@@ -59,9 +80,9 @@ void TracklessScrollbar::update(const float dt) {
     CCScrollLayerExt* target = this->getTarget();
     NineSlice* thumb = this->getThumb();
     const Theme::Theme& theme = Theme::getTheme();
-    const CCSize size = this->getContentSize();
-    const CCSize targetSize = target->getContentSize();
-    const CCSize targetContentSize = target->m_contentLayer->getContentSize();
+    const CCSize& size = this->getContentSize();
+    const CCSize& targetSize = target->getContentSize();
+    const CCSize& contentSize = target->m_contentLayer->getContentSize();
     const CCSize thumbSize = thumb->getScaledContentSize();
 
     if (this->isTouching()) {
@@ -71,22 +92,28 @@ void TracklessScrollbar::update(const float dt) {
     }
 
     ESCAPE_WHEN(m_vertical ?
-        targetContentSize.height == targetSize.height && targetSize.height == thumbSize.height :
-        targetContentSize.width == targetSize.width && targetSize.width == thumbSize.width,);
+        contentSize.height == targetSize.height && targetSize.height == thumbSize.height :
+        contentSize.width == targetSize.width && targetSize.width == thumbSize.width,);
     Scrollbar::update(dt);
 
     if (m_vertical) {
-        const float listDelta = std::max(targetContentSize.height - targetSize.height, 0.0f);
-        const float thumbYPercentage = std::min(1.0f, std::max(0.0f, (listDelta + target->m_contentLayer->getPositionY()) / listDelta));
-
-        thumb->setScaledContentSize({ size.width, std::max(std::min(targetSize.height / targetContentSize.height * size.height, size.height), 2.0f) });
-        thumb->setPositionY(size.height - (size.height - thumbSize.height) * thumbYPercentage);
+        thumb->setScaledContentSize({ size.width, this->calculateThumbSize(targetSize.height, contentSize.height, size.height) });
+        thumb->setPositionY(this->calculateThumbLocation(
+            targetSize.height, 
+            contentSize.height, 
+            size.height, 
+            thumbSize.height, 
+            target->m_contentLayer->getPositionY()
+        ));
     } else {
-        const float listDelta = std::max(targetContentSize.width - targetSize.width, 0.0f);
-        const float thumbXPercentage = std::min(1.0f, std::max(0.0f, (listDelta + target->m_contentLayer->getPositionX()) / listDelta));
-
-        thumb->setScaledContentSize({ std::max(std::min(targetSize.width / targetContentSize.width * size.width, size.width), 2.0f), size.height });
-        thumb->setPositionX(size.width - (size.width - thumbSize.width) * thumbXPercentage);
+        thumb->setScaledContentSize({ this->calculateThumbSize(targetSize.width, contentSize.width, size.width), size.height });
+        thumb->setPositionX(this->calculateThumbLocation(
+            targetSize.width,
+            contentSize.width,
+            size.width,
+            thumbSize.width,
+            target->m_contentLayer->getPositionX()
+        ));
     }
 }
 

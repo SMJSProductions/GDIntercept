@@ -10,7 +10,7 @@ class Stream;
 template<typename T>
 concept is_stream = requires(T* stream) {
     []<typename U>(Stream<U>*) {}(stream);
-}; 
+};
 
 template<typename F, typename Returns, typename ...Args>
 concept returning_lambda = std::invocable<F, Args...> && std::is_convertible_v<std::invoke_result_t<F, Args...>, Returns>;
@@ -72,7 +72,7 @@ public:
 
     Stream() noexcept = default;
     Stream(const Stream& other) = default;
-    Stream(Stream&& other) noexcept = default;  
+    Stream(Stream&& other) noexcept = default;
     Stream(std::vector<T>&& vector) noexcept : std::vector<T>(std::move(vector)) { }
     Stream(const std::vector<T>& vector) : std::vector<T>(vector) { }
     Stream(const std::initializer_list<T>& list) : std::vector<T>(list) { }

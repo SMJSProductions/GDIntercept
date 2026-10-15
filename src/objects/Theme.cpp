@@ -2,16 +2,20 @@
 
 LookupTable<std::string, Theme::Theme> Theme::Theme::CACHED_THEMES;
 
-CCLabelBMFont* Theme::Font::createLabel(const std::string_view text) const {
-    CCLabelBMFont* label = CCLabelBMFont::create(StringBuffer(text).c_str(), fontName.c_str());
+CCLabelBMFont* Theme::Font::createLabel(const ZStringView text) const {
+    CCLabelBMFont* label = CCLabelBMFont::create(text.c_str(), fontName.c_str());
 
     label->setScale(fontScale);
 
     return label;
 }
 
+CCSize Theme::Font::getFontSize() const {
+    return cocos::getLabelSize("0", fontName.c_str()) * fontScale;
+}
+
 CCSize Theme::Font::getTrueFontSize() const {
-    return this->createLabel("0")->getScaledContentSize();
+    return CCLabelBMFont::create("0", fontName.c_str())->getChildByIndex(0)->getContentSize() * fontScale;
 }
 
 void Theme::Theme::load() {

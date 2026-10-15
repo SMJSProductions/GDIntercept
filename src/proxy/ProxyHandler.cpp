@@ -5,8 +5,8 @@ using namespace proxy::prelude;
 $on_mod(Loaded) {
     Mod::get()->setSavedValue("paused", Mod::get()->getSettingValue<bool>("pause-between-plays") && Mod::get()->getSavedValue("paused", false));
 
-    web::WebRequestInterceptEvent().listen([](std::string_view modID, web::WebRequest& request) {
-        ProxyHandler::create(modID, request);
+    web::WebRequestInterceptEvent().listen([](const std::string_view modID, web::WebRequest& request) {
+        ProxyHandler::create(request);
 
         return ListenerResult::Propagate;
     }, 1'000'000).leak();
@@ -28,8 +28,8 @@ ProxyHandler* ProxyHandler::create(CCHttpRequest* request) {
     return proxy;
 }
 
-ProxyHandler* ProxyHandler::create(std::string_view modID, web::WebRequest& request) {
-    ProxyHandler* proxy = new ProxyHandler(modID, request);
+ProxyHandler* ProxyHandler::create(web::WebRequest& request) {
+    ProxyHandler* proxy = new ProxyHandler(request);
 
     ProxyHandler::registerProxy(proxy);
 
@@ -38,23 +38,24 @@ ProxyHandler* ProxyHandler::create(std::string_view modID, web::WebRequest& requ
 
 Stream<ProxyHandler*> ProxyHandler::getFilteredProxies() {
     std::shared_lock aliveLock(ProxyHandler::ALIVE_MUTEX);
-
-    static const std::unordered_map<Origin, std::string> proxyTranslations = {
-        { Origin::GD, "Geometry Dash Server" },
-        { Origin::GD_CDN, "Geometry Dash CDN" },
-        { Origin::ROBTOP_GAMES, "RobtopGames Server" },
-        { Origin::NEWGROUNDS, "Newgrounds CDN" },
-        { Origin::GEODE, "Geode Server" },
-        { Origin::LOCALHOST, "Localhost" },
-        { Origin::OTHER, "Unknown Origin" }
-    };
-    const std::string filter = Mod::get()->getSettingValue<std::string>("filter");
+    std::string filter = Mod::get()->getSettingValue<std::string>("filter");
 
     if (ProxyHandler::ALIVE_PROXIES.empty() || filter == "None") {
         return Stream(ProxyHandler::ALIVE_PROXIES.begin(), ProxyHandler::ALIVE_PROXIES.end());
     } else {
-        return Stream(ProxyHandler::ALIVE_PROXIES.begin(), ProxyHandler::ALIVE_PROXIES.end()).filter([&filter](ProxyHandler* proxy) {
-            return proxyTranslations.at(proxy->m_info->getURL().getOrigin()) == filter;
+        return Stream(ProxyHandler::ALIVE_PROXIES.begin(), ProxyHandler::ALIVE_PROXIES.end()).filter([
+            filter = std::move(filter)
+        ](ProxyHandler* proxy) {
+            switch (proxy->m_info->getURL().getOrigin()) {
+                case Origin::GD: return filter == "Geometry Dash Server";
+                case Origin::GD_CDN: return filter == "Geometry Dash CDN";
+                case Origin::ROBTOP_GAMES: return filter == "RobtopGames Server";
+                case Origin::NEWGROUNDS: return filter == "Newgrounds CDN";
+                case Origin::GEODE: return filter == "Geode Server";
+                case Origin::LOCALHOST: return filter == "Localhost";
+                case Origin::LAN: return filter == "LAN";
+                case Origin::OTHER: return filter == "Unknown Origin";
+            }
         });
     }
 }
@@ -63,7 +64,14 @@ bool ProxyHandler::isProxy(CCHttpRequest* request) {
     std::shared_lock aliveLock(ProxyHandler::ALIVE_MUTEX);
 
     return ProxyHandler::ALIVE_PROXIES.some([request](ProxyHandler* proxy) {
-        return proxy->getCocosRequest() == request;
+        return std::visit(makeVisitor{
+            [request](CCHttpRequest* originalRequest) {
+                return originalRequest == request;
+            },
+            [](const web::WebRequest& originalRequest) {
+                return false;
+            }
+        }, proxy->m_info->m_request.m_original);
     });
 }
 
@@ -71,9 +79,14 @@ bool ProxyHandler::isProxy(const web::WebRequest& request) {
     std::shared_lock aliveLock(ProxyHandler::ALIVE_MUTEX);
 
     return ProxyHandler::ALIVE_PROXIES.some([request](ProxyHandler* proxy) {
-        const std::optional<web::WebRequest>& proxyReq = proxy->getModRequest();
-
-        return proxyReq.has_value() && proxyReq.value().getID() == request.getID();
+        return std::visit(makeVisitor{
+            [](CCHttpRequest* originalRequest) {
+                return false;
+            },
+            [request](const web::WebRequest& originalRequest) {
+                return originalRequest.getID() == originalRequest.getID();
+            }
+        }, proxy->m_info->m_request.m_original);
     });
 }
 
@@ -97,13 +110,10 @@ void ProxyHandler::resumeAll() {
     }
 
     for (ProxyHandler* proxy : paused) {
-        const std::optional<CCHttpRequest*>& request = proxy->getCocosRequest();
-
-        if (!proxy->m_finished && request.has_value()) {
-            proxy->m_info->m_request.resetTime();
-            proxy->m_info->resume();
-            CCHttpClient::getInstance()->send(request.value());
-        }
+        // If a none cocos request or completed request gets here... wtf?
+        proxy->m_info->m_request.resetTime();
+        proxy->m_info->resume();
+        CCHttpClient::getInstance()->send(std::get<CCHttpRequest*>(proxy->m_info->m_request.m_original));
     }
 }
 
@@ -148,12 +158,10 @@ void ProxyHandler::registerProxy(ProxyHandler* proxy) {
     ProxyEvent(EventState::REQUEST).send(proxy->m_info);
 }
 
-ProxyHandler::ProxyHandler(CCHttpRequest* request) : m_cocosRequest(request),
-m_info(std::make_shared<HttpInfo>(request)),
+ProxyHandler::ProxyHandler(CCHttpRequest* request) : m_info(std::make_shared<HttpInfo>(request)),
 m_originalTarget(request->getTarget()),
-m_originalProxy(request->getSelector()),
+m_originalListener(request->getSelector()),
 m_finished(false) {
-    request->retain();
     request->setResponseCallback(this, httpresponse_selector(ProxyHandler::onCocosResponse));
 
     if (!m_info->isPaused()) {
@@ -163,48 +171,38 @@ m_finished(false) {
     }
 }
 
-ProxyHandler::ProxyHandler(std::string_view modID, web::WebRequest& request) : m_modRequest(request),
+ProxyHandler::ProxyHandler(web::WebRequest& request) : m_info(std::make_shared<HttpInfo>(request)),
 m_responseListener(web::IDBasedWebResponseEvent(request.getID()).listen([this](const web::WebResponse& response) {
     return this->onModResponse(response);
 }, Priority::First)),
-m_info(std::make_shared<HttpInfo>(modID, request)),
 m_originalTarget(nullptr),
-m_originalProxy(nullptr),
+m_originalListener(nullptr),
 m_finished(false) { }
-
-ProxyHandler::~ProxyHandler() {
-    if (m_cocosRequest.has_value()) {
-        m_cocosRequest.value()->release();
-    }
-}
 
 std::shared_ptr<HttpInfo> ProxyHandler::getInfo() noexcept {
     return m_info;
 }
 
 void ProxyHandler::onCocosResponse(CCHttpClient* client, CCHttpResponse* response) {
-    m_info->m_response.emplace(HttpInfo::Response(m_info, response));
-
-    (m_originalTarget->*m_originalProxy)(client, response);
+    m_info->m_response.emplace(response, m_info.get());
+    (m_originalTarget->*m_originalListener)(client, response);
     this->onResponse();
 }
 
 bool ProxyHandler::onModResponse(const web::WebResponse& response) {
-    m_info->m_httpVersion = HttpInfo::translateHttpVersion(m_modRequest->getHttpVersion());
-
-    m_info->m_response.emplace(HttpInfo::Response(m_info, response));
+    m_info->m_response.emplace(response, m_info.get());
     this->onResponse();
 
     return ListenerResult::Propagate;
 }
 
 void ProxyHandler::onResponse() {
-    bool shouldRelease = false;
+    const int statusCode = m_info->m_response->getStatusCode();
     m_finished = true;
 
-    if (m_info->m_response->m_statusCode == static_cast<int>(web::GeodeWebError::REQUEST_CANCELLED)) {
+    if (statusCode == static_cast<int>(web::GeodeWebError::REQUEST_CANCELLED)) {
         m_info->m_state = State::CANCELLED;
-    } else if (m_info->m_response->m_statusCode < 0) {
+    } else if (statusCode < 0) {
         m_info->m_state = State::FAULTY;
     } else {
         m_info->m_state = State::COMPLETED;

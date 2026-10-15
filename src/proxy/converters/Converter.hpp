@@ -16,11 +16,10 @@ namespace proxy::converters {
     class Converter {
     public:
         Converter(const enums::ContentType resultContentType, const bool needsMasking = false);
-        virtual bool canConvert(const std::string_view path, const bool isBody, const std::string_view original) const = 0;
+        virtual bool canConvert(const std::string_view path, const bool isRequest, const std::string_view original) const = 0;
         virtual std::string convert(const std::string_view path, const std::string_view original, const bool censor) const = 0;
         virtual std::string toRaw(const std::string_view path, const std::string_view original) const = 0;
         BOOL_PROTECTED_GETTER(needsCensoring, NeedsCensoring);
-        BOOL_PROTECTED_GETTER(needsMasking, NeedsMasking);
         PRIMITIVE_GETTER(enums::ContentType, resultContentType, ResultContentType);
     };
 }
